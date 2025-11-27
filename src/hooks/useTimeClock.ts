@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { Employee, TimeRecord } from "@/types/timeClock";
-import { getEmployees, getTimeRecordsByEmployeeAndDate, createTimeRecord } from "@/services/timeClockService";
-import { getTodayDateString, getNextRecordTypeForEmployee, generateRecordId, getCurrentTimeString } from "@/utils/timeClockUtils";
+import { Employee, TimeRecord, TimeRecordType } from "@/types/timeClock";
+import { getEmployees, getTimeRecordsByEmployeeAndDate, registerWithPhoto } from "@/services/timeClockService";
+import { getTodayDateString, getNextRecordTypeForEmployee, getCurrentTimeString } from "@/utils/timeClockUtils";
 
 export function useTimeClock() {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -47,10 +47,10 @@ export function useTimeClock() {
     }
   }
 
-  async function registerTimeRecord(): Promise<{ success: boolean; message: string; type?: string }> {
+  function canRegister(): { canRegister: boolean; message?: string; nextType?: TimeRecordType } {
     if (!selectedEmployeeId) {
       return {
-        success: false,
+        canRegister: false,
         message: "Selecione um colaborador antes de registrar o ponto.",
       };
     }
@@ -59,31 +59,44 @@ export function useTimeClock() {
 
     if (!nextType) {
       return {
-        success: false,
+        canRegister: false,
         message: "Você já registrou todos os horários de hoje.",
+      };
+    }
+
+    return { canRegister: true, nextType };
+  }
+
+  async function registerTimeRecordWithPhoto(photo: Blob): Promise<{ success: boolean; message: string; type?: string }> {
+    const check = canRegister();
+    
+    if (!check.canRegister || !check.nextType) {
+      return {
+        success: false,
+        message: check.message || "Erro ao verificar registro.",
       };
     }
 
     try {
       setIsLoading(true);
-      const newRecord: TimeRecord = {
-        id: generateRecordId(),
+      
+      const newRecord = await registerWithPhoto({
         employeeId: selectedEmployeeId,
+        recordType: check.nextType,
         date: getTodayDateString(),
         time: getCurrentTimeString(),
-        type: nextType,
-      };
+        photo,
+      });
 
-      await createTimeRecord(newRecord);
       await loadTodayRecords();
 
       return {
         success: true,
-        message: `${getRecordTypeLabel(nextType)} registrada às ${newRecord.time}`,
-        type: nextType,
+        message: `${getRecordTypeLabel(check.nextType)} registrada com foto às ${newRecord.time}`,
+        type: check.nextType,
       };
     } catch (error) {
-      console.error("Error registering time record:", error);
+      console.error("Error registering time record with photo:", error);
       return {
         success: false,
         message: "Erro ao registrar ponto. Tente novamente.",
@@ -111,7 +124,8 @@ export function useTimeClock() {
     setSelectedEmployeeId,
     todayRecords,
     isLoading,
-    registerTimeRecord,
+    canRegister,
+    registerTimeRecordWithPhoto,
     nextRecordType,
     getRecordTypeLabel,
   };
