@@ -11,6 +11,16 @@ export interface TimeRecord {
   date: string; // "YYYY-MM-DD"
   time: string; // "HH:mm:ss"
   type: TimeRecordType;
+  photoUrl?: string; // URL da foto capturada (futuramente: S3, Supabase Storage, etc.)
+}
+
+// Input para registro com foto
+export interface RegisterWithPhotoInput {
+  employeeId: string;
+  recordType: TimeRecordType;
+  date: string;
+  time: string;
+  photo: Blob;
 }
 
 export const RECORD_TYPE_LABELS: Record<TimeRecordType, string> = {
