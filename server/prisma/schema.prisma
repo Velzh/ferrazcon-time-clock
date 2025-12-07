@@ -1,0 +1,70 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum TimeRecordType {
+  ENTRADA
+  SAIDA_ALMOCO
+  VOLTA_ALMOCO
+  SAIDA_FINAL
+}
+
+model Employee {
+  id             String          @id @default(cuid())
+  identifier     String          @unique
+  name           String
+  email          String?         @unique
+  active         Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  faceEmbeddings FaceEmbedding[]
+  timeEntries    TimeEntry[]
+}
+
+model FaceEmbedding {
+  id             String    @id @default(cuid())
+  employee       Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeId     String
+  embedding      Json
+  algorithm      String    @default("face-api.js")
+  version        String?
+  sourcePhotoUrl String?
+  createdAt      DateTime  @default(now())
+}
+
+model TimeEntry {
+  id         String         @id @default(cuid())
+  employee   Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeId String
+  type       TimeRecordType
+  timestamp  DateTime
+  confidence Float?
+  deviceId   String?
+  photoUrl   String?
+  createdAt  DateTime       @default(now())
+
+  @@index([employeeId, timestamp])
+}
+
+model Device {
+  id        String   @id @default(cuid())
+  name      String
+  secret    String
+  location  String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String
+  actor     String?
+  payload   Json?
+  createdAt DateTime @default(now())
+}

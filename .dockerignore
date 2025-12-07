@@ -1,0 +1,13 @@
+node_modules
+dist
+server/node_modules
+server/dist
+server/dev.db
+server/data
+*.log
+.git
+.gitignore
+env.local
+.env.local
+server/.env
+server/.env.local

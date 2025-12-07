@@ -1,26 +1,35 @@
-export interface Employee {
-  id: string;
-  name: string;
-}
-
 export type TimeRecordType = "ENTRADA" | "SAIDA_ALMOCO" | "VOLTA_ALMOCO" | "SAIDA_FINAL";
 
-export interface TimeRecord {
+export interface Employee {
   id: string;
-  employeeId: string;
-  date: string; // "YYYY-MM-DD"
-  time: string; // "HH:mm:ss"
-  type: TimeRecordType;
-  photoUrl?: string; // URL da foto capturada (futuramente: S3, Supabase Storage, etc.)
+  identifier: string;
+  name: string;
+  email?: string | null;
+  embeddingsCount?: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
-// Input para registro com foto
-export interface RegisterWithPhotoInput {
+export interface TimeEntry {
+  id: string;
   employeeId: string;
-  recordType: TimeRecordType;
-  date: string;
-  time: string;
-  photo: Blob;
+  type: TimeRecordType;
+  timestamp: string;
+  confidence?: number | null;
+  deviceId?: string | null;
+  photoUrl?: string | null;
+  employee?: Pick<Employee, "id" | "name" | "identifier">;
+}
+
+export interface RecognitionResponse {
+  matched: boolean;
+  employee?: Pick<Employee, "id" | "name" | "identifier">;
+  canRegister?: boolean;
+  message?: string;
+  nextType?: TimeRecordType;
+  nextTypeLabel?: string;
+  similarity?: number;
+  timeEntry?: TimeEntry;
 }
 
 export const RECORD_TYPE_LABELS: Record<TimeRecordType, string> = {

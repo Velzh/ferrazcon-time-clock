@@ -103,7 +103,7 @@ export function CameraModal({ isOpen, onClose, onConfirm, recordTypeLabel }: Cam
         }
       },
       "image/jpeg",
-      0.8
+      0.8,
     );
   };
 
@@ -145,15 +145,14 @@ export function CameraModal({ isOpen, onClose, onConfirm, recordTypeLabel }: Cam
         <DialogHeader>
           <DialogTitle className="text-primary flex items-center gap-2">
             <Camera className="w-5 h-5" />
-            Confirme seu registro de ponto
+            {recordTypeLabel}
           </DialogTitle>
           <DialogDescription>
-            {recordTypeLabel} - Ative a câmera, tire uma foto e confirme o registro.
+            Capture uma foto nítida com boa iluminação. Se preferir, envie um arquivo já existente.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Camera/Preview Area */}
           <div className="relative aspect-video bg-muted rounded-lg overflow-hidden flex items-center justify-center">
             {isLoading && (
               <div className="absolute inset-0 flex items-center justify-center bg-muted">
@@ -172,11 +171,7 @@ export function CameraModal({ isOpen, onClose, onConfirm, recordTypeLabel }: Cam
             )}
 
             {capturedPhoto && photoPreviewUrl && (
-              <img
-                src={photoPreviewUrl}
-                alt="Foto capturada"
-                className="w-full h-full object-cover"
-              />
+              <img src={photoPreviewUrl} alt="Foto capturada" className="w-full h-full object-cover" />
             )}
 
             {cameraError && !capturedPhoto && (
@@ -187,18 +182,11 @@ export function CameraModal({ isOpen, onClose, onConfirm, recordTypeLabel }: Cam
             )}
           </div>
 
-          {/* Hidden canvas for capture */}
           <canvas ref={canvasRef} className="hidden" />
 
-          {/* Action Buttons */}
           <div className="flex flex-col gap-2">
             {!capturedPhoto && !cameraError && (
-              <Button
-                onClick={capturePhoto}
-                disabled={isLoading}
-                className="w-full"
-                size="lg"
-              >
+              <Button onClick={capturePhoto} disabled={isLoading} className="w-full" size="lg">
                 <Camera className="w-4 h-4 mr-2" />
                 Capturar foto
               </Button>
@@ -206,19 +194,11 @@ export function CameraModal({ isOpen, onClose, onConfirm, recordTypeLabel }: Cam
 
             {capturedPhoto && (
               <>
-                <Button
-                  onClick={handleConfirm}
-                  className="w-full"
-                  size="lg"
-                >
+                <Button onClick={handleConfirm} className="w-full" size="lg">
                   <Check className="w-4 h-4 mr-2" />
-                  Confirmar registro de ponto
+                  Confirmar
                 </Button>
-                <Button
-                  onClick={retakePhoto}
-                  variant="outline"
-                  className="w-full"
-                >
+                <Button onClick={retakePhoto} variant="outline" className="w-full">
                   <RefreshCw className="w-4 h-4 mr-2" />
                   Tirar outra foto
                 </Button>
@@ -235,11 +215,7 @@ export function CameraModal({ isOpen, onClose, onConfirm, recordTypeLabel }: Cam
                   onChange={handleFileUpload}
                   className="hidden"
                 />
-                <Button
-                  onClick={() => fileInputRef.current?.click()}
-                  variant="outline"
-                  className="w-full"
-                >
+                <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="w-full">
                   <Upload className="w-4 h-4 mr-2" />
                   Upload de arquivo
                 </Button>
@@ -252,9 +228,8 @@ export function CameraModal({ isOpen, onClose, onConfirm, recordTypeLabel }: Cam
             </Button>
           </div>
 
-          {/* LGPD Notice */}
           <p className="text-xs text-muted-foreground text-center border-t pt-3">
-            As imagens capturadas são utilizadas exclusivamente para controle interno de ponto da Ferrazcon Contabilidade, em conformidade com a LGPD.
+            As imagens capturadas são utilizadas exclusivamente para fins internos e biometria facial, em conformidade com a LGPD.
           </p>
         </div>
       </DialogContent>
