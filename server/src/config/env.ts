@@ -12,7 +12,23 @@ const envSchema = z.object({
     .default('false')
     .transform((value) => value === 'true'),
   GOOGLE_SERVICE_ACCOUNT_EMAIL: z.string().optional(),
-  GOOGLE_SERVICE_ACCOUNT_KEY: z.string().optional(),
+  GOOGLE_SERVICE_ACCOUNT_KEY: z
+    .string()
+    .optional()
+    .transform((val) => {
+      if (!val) return undefined;
+      try {
+        // Tenta decodificar base64
+        return JSON.parse(Buffer.from(val, 'base64').toString());
+      } catch {
+        // Se falhar, assume que já é JSON string
+        try {
+          return typeof val === 'string' ? JSON.parse(val) : val;
+        } catch {
+          return val; // Retorna como está se não conseguir parsear
+        }
+      }
+    }),
   GOOGLE_SHEETS_SPREADSHEET_ID: z.string().optional(),
   GOOGLE_SHEETS_TAB: z.string().default('Registros'),
   DEVICE_TOKEN: z.string().default('local-demo'),
