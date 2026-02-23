@@ -10,10 +10,10 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "prisma:seed": "node -r ts-node/register prisma/seed.ts"
+    "prisma:seed": "node -r ts-node/register src/seed.ts"
   },
   "prisma": {
-    "seed": "node -r ts-node/register prisma/seed.ts"
+    "seed": "node -r ts-node/register src/seed.ts"
   },
   "keywords": [],
   "author": "",

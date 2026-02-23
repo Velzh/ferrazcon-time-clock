@@ -1,12 +1,12 @@
 # Deploy na VPS – Gestão de ponto (Ferrazcon)
 
-Passo a passo para subir a **nova versão** do app na VPS, no mesmo padrão da v1 (Docker + Traefik/HTTPS em `ponto.fzccontabilidade.com.br`).
+Passo a passo para subir a **nova versão** do app na VPS. Este guia considera deploy via **Portainer** (variáveis na interface, stack a partir do repositório Git).
 
 ---
 
-## 1. Na sua máquina (preparar a nova versão)
+## 1. Código no repositório
 
-1. **Commit e push** das alterações (se ainda não fez):
+1. Na sua máquina, **commit e push** da versão que deseja subir:
    ```bash
    cd ferrazcon-time-clock
    git add .
@@ -14,127 +14,79 @@ Passo a passo para subir a **nova versão** do app na VPS, no mesmo padrão da v
    git push origin main
    ```
 
-2. **(Opcional)** Testar o build Docker localmente:
-   ```bash
-   cp env.example .env.docker
-   # Edite .env.docker: VITE_API_URL=/api, DEVICE_TOKEN=..., JWT_SECRET=...
-   docker compose --env-file .env.docker up --build
-   ```
-   Acesse `http://localhost:8080` e confira login/totem. Depois `docker compose down`.
-
 ---
 
-## 2. Na VPS (acesso SSH)
+## 2. Variáveis de ambiente no Portainer
 
-3. **Conectar na VPS**:
-   ```bash
-   ssh usuario@ip-da-vps
-   # ou
-   ssh usuario@ponto.fzccontabilidade.com.br
-   ```
+2. No Portainer, abra o **stack** do ferrazcon-time-clock e vá em **Environment variables** (ou na tela onde você define as variáveis do stack).
 
-4. **Ir até a pasta do projeto** (onde está o repositório clonado na v1):
-   ```bash
-   cd /caminho/para/ferrazcon-time-clock
-   # Exemplo: cd ~/ferrazcon-time-clock ou cd /opt/ferrazcon-time-clock
-   ```
-
-5. **Atualizar o código**:
-   ```bash
-   git fetch origin
-   git pull origin main
-   ```
-
----
-
-## 3. Variáveis de ambiente na VPS
-
-6. **Arquivo de ambiente** usado pelo Docker (ex.: `.env` na pasta do projeto):
-   - Se na v1 você usava um arquivo (ex.: `.env`), **mantenha** as variáveis que já existiam.
-   - **Inclua ou ajuste** estas para a nova versão:
+3. Confira/adicione estas variáveis. As que você já tinha da v1 mantêm; para a v2 é **obrigatório** ter **JWT_SECRET**:
 
    | Variável | Obrigatório | Descrição |
    |----------|-------------|-----------|
-   | `JWT_SECRET` | **Sim** | Chave forte (32+ caracteres) para tokens de login. **Defina em produção.** |
+   | `JWT_SECRET` | **Sim** (v2) | Chave forte (32+ caracteres) para tokens de login. Gere com `openssl rand -base64 32`. |
    | `DEVICE_TOKEN` | Sim | Mesmo valor que o totem usa no header `X-Device-Token`. |
-   | `DATABASE_URL` | Sim | Na VPS com Docker: `file:./data/dev.db` (volume persiste). |
-   | `VITE_API_URL` | Sim (build) | Para o frontend: use `/api` (proxy no nginx). |
-   | `UPLOAD_DIR` | Não | Default no compose: `/app/data/uploads`. |
-   | `OPENAI_API_KEY` | Não | Só se quiser normalização por IA na importação de folha. |
+   | `DATABASE_URL` | Sim | Ex.: `file:./data/dev.db` (volume persiste em `/app/data`). |
+   | `VITE_API_URL` | Sim (build) | Use `/api` para o frontend atrás do proxy. |
+   | `PORT` | Não | Default 4000 para a API. |
+   | `NODE_ENV` | Não | `production`. |
+   | `TZ` | Não | Ex.: `America/Sao_Paulo`. |
+   | `UPLOAD_DIR` | Não | Default no compose: `/app/data/uploads`. Só defina se quiser outro. |
+   | `OPENAI_API_KEY` | Não | Só se for usar normalização por IA na importação de folha. |
+   | `FACIAL_THRESHOLD`, `ENABLE_SHEETS`, Google Sheets... | Conforme v1 | Mantenha como na v1 se já usava. |
 
-   Exemplo mínimo em `.env` na raiz do projeto:
-   ```env
-   VITE_API_URL=/api
-   DEVICE_TOKEN=seu-token-seguro
-   JWT_SECRET=sua-chave-jwt-muito-segura-min-32-chars
-   TZ=America/Sao_Paulo
-   ```
-
-7. **Não commitar** o `.env` (ele deve estar no `.gitignore`). Se a VPS não tiver o arquivo, crie a partir do `env.example` na raiz e de `server/env.example` para o backend.
+4. Salve as variáveis no Portainer (sem criar arquivo `.env` no servidor).
 
 ---
 
-## 4. Build e subida dos containers
+## 3. Atualizar e subir a nova versão no Portainer
 
-8. **Parar a stack atual** (v1):
-   ```bash
-   docker compose down
-   ```
+5. Com o código já em `main` e as variáveis atualizadas:
+   - No stack, use **Pull and redeploy** (ou **Update the stack** + **Redeploy**) para que o Portainer busque o repositório, faça o **build** das imagens e suba os containers com as novas variáveis.
+   - Se o stack for “web editor” e o repositório for atualizado manualmente na VPS, atualize o `docker-compose` no editor (ou via Git no servidor) e depois **Redeploy** (e **Rebuild** se precisar rebuildar as imagens).
 
-9. **Build e subir a nova versão**:
-   ```bash
-   docker compose --env-file .env up -d --build
-   ```
-   (Use o nome do seu arquivo de env se for outro, ex.: `--env-file .env.docker`.)
+6. Aguarde o build e o deploy. Verifique se os dois serviços (**api** e **frontend**) estão **Running**.
 
-10. **Verificar** se os dois serviços subiram:
-    ```bash
-    docker compose ps
-    ```
-    Deve aparecer `api` e `frontend` com status "Up".
+7. **Migrations**: ao subir, o container **api** roda `npx prisma migrate deploy`. Na primeira vez da v2, as novas tabelas (Empresa, User, Folha, Importação, etc.) são criadas automaticamente.
 
-11. **Migrations**: o `docker-compose` já roda `npx prisma migrate deploy` no startup do container `api`. Na primeira vez que essa VPS recebe a v2, as novas tabelas (Empresa, User, Folha, Importação, etc.) serão criadas automaticamente.
+---
 
-12. **Seed (só na primeira vez com a v2)**  
-    Se esta é a **primeira** implantação da versão multi-tenant nessa base, você precisa rodar o seed **uma vez** para criar a empresa padrão, usuário admin e device do totem. O container não inclui o código do seed; duas opções:
-    - **Opção A:** Na sua máquina, com o banco da VPS acessível (ex.: cópia do volume), rode `cd server && npm run prisma:seed`.
-    - **Opção B:** Na VPS, após o primeiro `up`, copie o script de seed para dentro do container e execute, ou use um job único (ex.: script que chama a API de criação de empresa/usuário).
+## 4. Seed (só na primeira vez com a v2)
 
-    Credenciais criadas pelo seed (troque em produção):  
-    - Admin: `admin@ferrazcon.com.br` / `Ferrazcon@Admin2025!`  
-    - Gestor Ferrazcon: `gestor@ferrazcon.com.br` / `Gestor@Ferrazcon2025!`  
-    - Gestor Velz Hub: `gestor@velzhub.com.br` / `VelzHub@Gestor2025!`
+8. Se esta é a **primeira** implantação da versão multi-tenant nessa base, rode o **seed** uma vez (empresa padrão, usuário admin, device do totem). **Só funciona depois** de ter feito o Pull and redeploy (a imagem precisa estar com o seed configurado).
+   - No Portainer: **Containers** → clique no container **api** do stack (ex.: `ferrazcon-time-clock_api_1`) → **Console** (ou **>_ Console** / **Exec**).
+   - Conecte com o shell (**bash** ou **sh**).
+   - Dentro do container, execute:
+     ```bash
+     npx prisma db seed
+     ```
+   - Você deve ver mensagens como “Empresa padrão criada”, “Usuário ADMIN criado”, “Seed concluído.”.
+
+   Credenciais criadas pelo seed (troque em produção):
+   - Admin: `admin@ferrazcon.com.br` / `Ferrazcon@Admin2025!`
+   - Gestor Ferrazcon: `gestor@ferrazcon.com.br` / `Gestor@Ferrazcon2025!`
+   - Gestor Velz Hub: `gestor@velzhub.com.br` / `VelzHub@Gestor2025!`
 
 ---
 
 ## 5. Traefik / HTTPS (se já usava na v1)
 
-13. Se na v1 o acesso era por **Traefik** com HTTPS em `ponto.fzccontabilidade.com.br`, mantenha a mesma configuração:
-    - O serviço **frontend** expõe a porta 80 (ou a que estiver em `WEB_PORT`).
-    - No Traefik, a rota deve apontar para o container do frontend; o proxy interno já envia `/api` para o container `api` (conforme `deploy/nginx.conf`).
-    - Nenhuma alteração obrigatória no Traefik para a v2, desde que o stack use a mesma rede/nomes de serviço.
+9. Se na v1 o acesso era por **Traefik** em `ponto.fzccontabilidade.com.br`, mantenha a mesma rota apontando para o serviço **frontend**. O proxy interno do frontend já envia `/api` para o container **api**. Nenhuma alteração obrigatória no Traefik para a v2.
 
-14. Teste no navegador:
-    - `https://ponto.fzccontabilidade.com.br` → deve abrir o app.
-    - `/login` → login com um dos usuários do seed (após rodar o seed).
-    - `/totem` → modo totem (header `X-Device-Token` = `DEVICE_TOKEN` do `.env`).
+10. Teste no navegador:
+    - `https://ponto.fzccontabilidade.com.br` → abre o app.
+    - `/login` → login com um usuário do seed (após rodar o seed).
+    - `/totem` → modo totem (header `X-Device-Token` = valor de `DEVICE_TOKEN` no Portainer).
 
 ---
 
-## Resumo rápido
+## Resumo rápido (Portainer)
 
-```bash
-# Na sua máquina
-git push origin main
+1. **Código:** `git push origin main`
+2. **Portainer:** variáveis em Environment variables (incluir **JWT_SECRET** para v2) → Salvar
+3. **Portainer:** no stack → **Pull and redeploy** (ou Update + Redeploy/Rebuild)
+4. Verificar **api** e **frontend** em Running
+5. Primeira vez v2: rodar seed no container **api** (Console/Exec)
+6. Acessar o site e testar login e totem
 
-# Na VPS
-cd /caminho/ferrazcon-time-clock
-git pull origin main
-# Editar .env e adicionar JWT_SECRET (e demais se necessário)
-docker compose down
-docker compose --env-file .env up -d --build
-docker compose ps
-# Se primeira vez v2: rodar seed (ver passo 12)
-```
-
-Se algo falhar, confira os logs: `docker compose logs -f api` e `docker compose logs -f frontend`.
+Se algo falhar, confira os **logs** dos containers **api** e **frontend** no Portainer.
