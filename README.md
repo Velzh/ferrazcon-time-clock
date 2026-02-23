@@ -1,11 +1,11 @@
-# Ferrazcon Time Clock (MVP)
+# Ferrazcon Time Clock (SaaS Multi-tenant)
 
-Sistema de ponto eletrônico com reconhecimento facial pensado para rodar em tablet/totem. O projeto está dividido em duas partes:
+Sistema de ponto eletrônico com reconhecimento facial para rodar em tablet/totem, evoluído para **SaaS multi-empresa** (multi-tenant) para clientes da Ferrazcon.
 
-- **Frontend (Vite + React + TypeScript)** – UI do modo totem e painel admin.
-- **Backend (Fastify + Prisma + SQLite)** – APIs para colaboradores, biometrias, registros de ponto e integração opcional com Google Sheets.
+- **Frontend (Vite + React + TypeScript)** – Totem, painel admin e login (JWT).
+- **Backend (Fastify + Prisma + SQLite)** – APIs com isolamento por empresa, auth (JWT), colaboradores, biometrias, ponto, folha consolidada e integração opcional com Google Sheets.
 
-Os modelos de reconhecimento facial (`@vladmandic/face-api`) já estão versionados em `public/models` para funcionar offline.
+Os modelos de reconhecimento facial (`@vladmandic/face-api`) estão em `public/models` para uso offline.
 
 ## Requisitos
 
@@ -56,22 +56,36 @@ Variáveis importantes do **backend** (`server/.env`):
 | `GOOGLE_SERVICE_ACCOUNT_KEY` | JSON da key (pode ser base64) |
 | `GOOGLE_SHEETS_SPREADSHEET_ID` | ID da planilha |
 | `GOOGLE_SHEETS_TAB` | Aba usada para append |
+| `JWT_SECRET` | Chave para assinatura do token (mín. 16 caracteres; em produção use 32+) |
 
 ### Rodando localmente
 
-Em dois terminais:
+1. **Banco e seed (primeira vez ou após migrations)**
+
+```bash
+cd server
+npm run prisma:migrate   # aplica migrations
+npm run prisma:seed      # cria empresa padrão, usuário ADMIN e device do totem
+```
+
+2. **Em dois terminais**
 
 ```bash
 # Terminal 1 - backend
 cd server
 npm run dev
 
-# Terminal 2 - frontend
-cd ferrazcon-time-clock   # pasta raiz
+# Terminal 2 - frontend (pasta raiz)
 npm run dev
 ```
 
-Acesse `http://localhost:5173/totem` para o modo Totem e `http://localhost:5173/admin` para o painel.
+- **Totem:** `http://localhost:5173/totem` (header `X-Device-Token` = `DEVICE_TOKEN` do `.env`).
+- **Admin:** `http://localhost:5173/admin` → redireciona para login se não autenticado.
+- **Login:** `http://localhost:5173/login`. Após o seed:
+  - **ADMIN (Ferrazcon):** `admin@ferrazcon.com.br` / `Ferrazcon@Admin2025!` — vê seletor de empresas em `/admin`.
+  - **GESTOR Ferrazcon:** `gestor@ferrazcon.com.br` / `Gestor@Ferrazcon2025!` — painel da empresa Ferrazcon.
+  - **GESTOR Velz Hub:** `gestor@velzhub.com.br` / `VelzHub@Gestor2025!` — painel da empresa Velz Hub (cliente exemplo).
+  Gestores acessam o mesmo `/admin`; não há seletor de empresa, apenas os dados da própria empresa.
 
 ### Executando com Docker / Portainer
 
@@ -98,26 +112,34 @@ Padrões do compose:
 - Frontend em `http://localhost:8080` (`WEB_PORT`) com proxy automático para `/api`.
 - Banco SQLite persistido no volume `api_data` (`/app/data/dev.db` dentro do container).
 
-Para deploy em VPS/Portainer, crie um novo stack e cole o conteúdo do `docker-compose.yml`. Preencha as variáveis sensíveis (`DEVICE_TOKEN`, credenciais do Google, `FACIAL_THRESHOLD`, etc.) e publique. Para múltiplos totens, replique o serviço `frontend` ou distribua tokens diferentes por dispositivo e mantenha o mesmo backend.
+Para deploy em VPS/Portainer, crie um novo stack e cole o conteúdo do `docker-compose.yml`. Preencha as variáveis sensíveis (`DEVICE_TOKEN`, `JWT_SECRET`, credenciais do Google, `FACIAL_THRESHOLD`, etc.) e publique. **Passo a passo completo (atualizar código, env, build, seed, Traefik):** veja **[DEPLOY.md](DEPLOY.md)**. Para múltiplos totens, replique o serviço `frontend` ou distribua tokens diferentes por dispositivo e mantenha o mesmo backend.
 
 ### Scripts backend
 
 ```
 cd server
-npm run dev          # Fastify + Prisma em modo watch
+npm run dev              # Fastify + Prisma em modo watch
 npm run prisma:migrate   # cria/aplica migrations
+npm run prisma:seed      # empresa padrão + usuário ADMIN + device totem
 npm run build && npm start
 ```
 
+## Multi-tenant e papéis
+
+- **Empresa (tenant):** toda entidade sensível (colaborador, batida, folha) está vinculada a uma empresa.
+- **Papéis:** `ADMIN` (Ferrazcon, gerencia todas as empresas), `GESTOR` (apenas sua empresa), `ATENDENTE` e `BALCAO` (registro e consulta mínima).
+- **Auth:** login em `/api/auth/login` retorna JWT; o front envia `Authorization: Bearer <token>` e, para ADMIN, opcionalmente `X-Empresa-Id` para escopar operações.
+- **Totem:** cada dispositivo (Device) pode ter um `empresaId`; o reconhecimento usa apenas colaboradores dessa empresa. O seed cria um device padrão com o `DEVICE_TOKEN` atual.
+
 ## Fluxos implementados
 
-### 1. Cadastro/Admin (`/admin`)
-- Cadastro de colaborador (ID interno, nome, e-mail).
-- Captura facial usando a própria câmera do navegador (CameraModal).
-- Gera embedding localmente com `face-api` e envia para `/api/employees/:id/enrollments`.
-- Lista colaboradores, mostra quantas biometrias cada um possui, permite exclusão.
-- Painel com últimas batidas registradas.
-- Acesso protegido: use o e-mail `contabilidadefzc@gmail.com` e a senha `Fe#@rAz65co*&n0Con1!$tabil`.
+### 1. Login e Admin (`/login`, `/admin`)
+- Login com e-mail e senha; JWT armazenado no front; todas as chamadas à API autenticadas usam o token.
+- ADMIN escolhe a empresa no seletor; GESTOR usa apenas a própria empresa.
+- Cadastro de colaborador (ID interno, nome, e-mail) escopado à empresa selecionada.
+- Captura facial (CameraModal), embedding via `face-api`, envio para `/api/employees/:id/enrollments`.
+- Lista de colaboradores e últimas batidas da empresa.
+- **Usuário padrão (seed):** `admin@ferrazcon.com.br` / `Ferrazcon@Admin2025!`.
 
 ### 2. Totem (`/totem`)
 - Câmera frontal espelhada com instruções ao colaborador.
@@ -126,12 +148,17 @@ npm run build && npm start
 - Registro gravado em SQLite (`timeEntries`) com confiança, dispositivo e timestamp no fuso configurado.
 - Feedback visual imediato + tabela com batidas do dia.
 
-### 3. Backend
-- Fastify + Prisma (SQLite de desenvolvimento, pronto para Postgres no futuro).
-- Modelos principais: `Employee`, `FaceEmbedding`, `TimeEntry`, `Device`, `AuditLog`.
-- Sequência de batidas controlada no servidor (Entrada → Saída almoço → Volta almoço → Saída final).
-- Logs de sucesso/erro gravados em `audit_logs` para rastreabilidade LGPD.
-- Integração com Google Sheets via Service Account (`services/googleSheetsService.ts`). Basta setar `ENABLE_SHEETS=true` e preencher as variáveis.
+### 3. Folha consolidada
+- Modelo `FolhaConsolidadaMensal` com colunas padrão (COLABORADOR, HORAS 60%, HORAS 100%, NOTURNO, INTERJORNADA, DESCONTO, ALOCADO, PLANO DE SAUDE, OBSERVAÇÃO).
+- `GET /api/folha?ano=&mes=` lista a folha da empresa; `PUT /api/folha` cria/atualiza linha.
+- `GET /api/folha/export?ano=&mes=&format=json|csv` exporta a folha do mês (JSON ou CSV).
+
+### 4. Backend
+- Fastify + Prisma (SQLite dev; Postgres/Redis previstos para produção).
+- Modelos: `Empresa`, `User`, `Employee` (com `empresaId`), `FaceEmbedding`, `TimeEntry`, `Device`, `FolhaConsolidadaMensal`, `ImportacaoArquivo`, `ImportacaoLinha`, `AuditLog`.
+- Sequência de batidas no servidor (Entrada → Saída almoço → Volta almoço → Saída final).
+- Auditoria em `AuditLog`; controle de acesso por role e `empresaId` em todas as rotas sensíveis.
+- Google Sheets: Service Account em `services/googleSheetsService.ts`; `ENABLE_SHEETS=true` e variáveis preenchidas.
 
 ## Reconhecimento facial
 
@@ -146,18 +173,31 @@ npm run build && npm start
 
 ### LGPD & Segurança
 
-- Apenas embeddings são persistidos; fotos ficam no dispositivo e não são enviadas.
-- Endpoint `/api/employees/:id/export` retorna todos os dados do colaborador (para portabilidade).
-- Endpoint `/api/employees/:id` com `DELETE` remove colaborador + biometria + registros (via cascade).
-- Token simples de dispositivo (`DEVICE_TOKEN`) protege `/api/recognitions`. Pode ser evoluído para JWT/apikey multi-totem.
-- Configurações sensíveis somente via variáveis de ambiente.
+- Apenas embeddings são persistidos; fotos ficam no dispositivo.
+- `/api/employees/:id/export` – portabilidade dos dados do colaborador.
+- `DELETE /api/employees/:id` – exclusão em cascata (colaborador + biometria + registros).
+- Controle de acesso: role e `empresaId` checados em todas as rotas; JWT para usuários; token de dispositivo para totem.
+- Configurações sensíveis apenas em variáveis de ambiente.
 
-## Próximos passos sugeridos
+## Documentação adicional
 
-- Adicionar liveness check (MediaPipe ou integração futura com serviço especializado).
-- Suporte a múltiplos totens (tabela `Device` + gerenciamento no painel).
-- Docker/Compose + Portainer stack (API, frontend, banco) para deploy na VPS.
-- Mecanismo de fila para replays/retentativas da integração Google Sheets.
-- Exportar relatórios (CSV/PDF) e filtros avançados no painel admin.
+- `docs/DIAGNOSTIC.md` – diagnóstico do código atual.
+- `docs/ARCHITECTURE.md` – arquitetura alvo (SaaS, folha, importação, jobs, AWS) e plano de migração.
 
-Com isso é possível demonstrar um MVP funcional localmente para o cliente, inclusive com reconhecimento real e armazenamento de batidas.
+## Importação inteligente de folha
+
+Na aba **Importar folha** do painel (Admin/Gestor):
+
+1. **Enviar documento:** PDF, XLSX, CSV ou imagem (PNG/JPG). Opcional: mês de referência (YYYY-MM).
+2. O backend processa de forma síncrona: extrai texto (XLSX/CSV parse; PDF com pdf-parse ou OCR; imagem com Tesseract).
+3. Se **OPENAI_API_KEY** estiver configurada, o texto é enviado à IA para normalizar em JSON (colaborador, horas 60%/100%, etc.) e validado com Zod. Caso contrário, usa mapeamento heurístico das colunas.
+4. As linhas ficam em **Revisão**; o gestor vê a tabela em **Importações recentes** → **Ver**.
+5. **Confirmar e consolidar na folha** grava os dados em `FolhaConsolidadaMensal` (por colaborador/mês). Linhas cujo nome não corresponder a um colaborador cadastrado são ignoradas.
+
+Variáveis opcionais no backend: `UPLOAD_DIR` (pasta de uploads, default `./uploads`), `OPENAI_API_KEY` (para normalização por IA).
+
+## Próximos passos (roadmap)
+
+- Jobs assíncronos (BullMQ + Redis) para importação pesada e exportação em background.
+- Docker com Postgres e Redis; preparação para AWS (S3, RDS, ElastiCache).
+- Liveness check e gestão de dispositivos (Device) no painel.

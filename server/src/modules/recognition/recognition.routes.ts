@@ -14,20 +14,39 @@ const recognitionSchema = z.object({
   previewOnly: z.boolean().optional(),
 });
 
-function ensureAuthorizedDevice(request: FastifyRequest, reply: FastifyReply, done: () => void) {
+/** Resolve token: Device cadastrado (com empresaId) ou token legado (env). Define request.recognitionEmpresaId. */
+async function ensureAuthorizedDevice(
+  request: FastifyRequest & { recognitionEmpresaId?: string | null },
+  reply: FastifyReply
+) {
   const header = request.headers['x-device-token'];
   const token = Array.isArray(header) ? header[0] : header;
-  if (!token || token !== env.DEVICE_TOKEN) {
+  if (!token) {
     reply.code(401).send({ message: 'Dispositivo não autorizado' });
     return;
   }
-  done();
+  const device = await prisma.device.findFirst({
+    where: { secret: token, active: true },
+    select: { empresaId: true },
+  });
+  if (device) {
+    request.recognitionEmpresaId = device.empresaId;
+    return;
+  }
+  if (token === env.DEVICE_TOKEN) {
+    request.recognitionEmpresaId = null;
+    return;
+  }
+  reply.code(401).send({ message: 'Dispositivo não autorizado' });
 }
 
 export async function recognitionRoutes(app: FastifyInstance) {
   app.post('/api/recognitions', { preHandler: ensureAuthorizedDevice }, async (request, reply) => {
     const rawBody = typeof request.body === 'string' ? JSON.parse(request.body) : request.body;
     const payload = recognitionSchema.parse(rawBody);
+    const req = request as typeof request & { recognitionEmpresaId?: string | null };
+    const empresaId = req.recognitionEmpresaId ?? null;
+
     let candidate = parseEmbedding(payload.embedding);
 
     // Normaliza o embedding do candidato para garantir consistência
@@ -45,9 +64,11 @@ export async function recognitionRoutes(app: FastifyInstance) {
     request.log.info({ 
       threshold: env.FACIAL_THRESHOLD,
       candidateLength: candidate.length,
+      empresaId: empresaId ?? 'legacy-all',
     }, 'Recognition request received');
 
     const embeddings = await prisma.faceEmbedding.findMany({
+      where: empresaId ? { employee: { empresaId } } : undefined,
       include: { employee: true },
     });
 

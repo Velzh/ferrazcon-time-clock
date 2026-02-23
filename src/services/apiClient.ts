@@ -1,14 +1,42 @@
+import { getToken, getSelectedEmpresaId } from '@/lib/authStorage';
+
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
+
+function joinBaseAndPath(base: string, path: string) {
+  const normalizedBase = base.replace(/\/+$/, '');
+
+  // Evita gerar /api/api/... quando base já é "/api" (ou termina com "/api")
+  // e o path também começa com "/api".
+  if ((normalizedBase === '/api' || normalizedBase.endsWith('/api')) && path.startsWith('/api/')) {
+    return `${normalizedBase}${path.slice('/api'.length)}`;
+  }
+
+  return `${normalizedBase}${path}`;
+}
+
+function getAuthHeaders(): HeadersInit {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  const empresaId = getSelectedEmpresaId();
+  if (empresaId) {
+    headers['X-Empresa-Id'] = empresaId;
+  }
+  return headers;
+}
 
 async function request<T>(input: string, init?: RequestInit): Promise<T> {
   try {
     const hasBody = init?.body !== undefined && init?.body !== null;
     const headers: HeadersInit = {
+      ...getAuthHeaders(),
       ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
       ...(init?.headers ?? {}),
     };
 
-    const response = await fetch(`${API_BASE_URL}${input}`, {
+    const response = await fetch(joinBaseAndPath(API_BASE_URL, input), {
       headers,
       ...init,
     });

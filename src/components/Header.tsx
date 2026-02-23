@@ -15,7 +15,7 @@ export function Header() {
           <img src={ferrazconLogo} alt="Ferrazcon Contabilidade" className="h-12 md:h-16 object-contain" />
           <div>
             <h1 className="text-xl font-bold text-primary">FERRAZCON CONTABILIDADE</h1>
-            <p className="text-sm text-muted-foreground">Sistema de Ponto com Reconhecimento Facial</p>
+            <p className="text-sm text-muted-foreground">Gestão de ponto</p>
           </div>
         </div>
         <nav className="flex gap-2 text-sm">

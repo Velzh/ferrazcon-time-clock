@@ -6,6 +6,45 @@ datasource db {
   provider = "sqlite"
 }
 
+// ---- Multi-tenant ----
+enum Role {
+  ADMIN
+  GESTOR
+  ATENDENTE
+  BALCAO
+}
+
+model Empresa {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users       User[]
+  employees   Employee[]
+  devices     Device[]
+  folhas      FolhaConsolidadaMensal[]
+  importacoes ImportacaoArquivo[]
+  auditLogs   AuditLog[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         Role
+  empresaId    String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  empresa   Empresa?   @relation(fields: [empresaId], references: [id], onDelete: SetNull)
+  auditLogs AuditLog[]
+}
+
+// ---- Ponto e reconhecimento (existentes, com tenant) ----
 enum TimeRecordType {
   ENTRADA
   SAIDA_ALMOCO
@@ -15,14 +54,20 @@ enum TimeRecordType {
 
 model Employee {
   id             String          @id @default(cuid())
-  identifier     String          @unique
+  empresaId      String?
+  identifier     String
   name           String
-  email          String?         @unique
+  email          String?
   active         Boolean         @default(true)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
+
+  empresa        Empresa?        @relation(fields: [empresaId], references: [id], onDelete: SetNull)
   faceEmbeddings FaceEmbedding[]
   timeEntries    TimeEntry[]
+  folhas         FolhaConsolidadaMensal[]
+
+  @@index([empresaId])
 }
 
 model FaceEmbedding {
@@ -52,18 +97,103 @@ model TimeEntry {
 
 model Device {
   id        String   @id @default(cuid())
+  empresaId String?
   name      String
   secret    String
   location  String?
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  empresa Empresa? @relation(fields: [empresaId], references: [id], onDelete: SetNull)
+}
+
+// ---- Folha consolidada (modelo padrão para planilha) ----
+model FolhaConsolidadaMensal {
+  id          String   @id @default(cuid())
+  empresaId   String
+  employeeId  String
+  ano         Int
+  mes         Int
+  colaborador String
+  horas60     String?  // HORAS 60%
+  horas100    String?
+  noturno     String?
+  interjornada String?
+  desconto    String?  // valor
+  alocado     String?
+  planoDeSaude String?
+  observacao  String?
+  status      String   @default("RASCUNHO") // RASCUNHO | REVISADO | FECHADO
+  revisadoPor  String?
+  revisadoEm  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  empresa  Empresa   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  employee Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([empresaId, employeeId, ano, mes])
+  @@index([empresaId, ano, mes])
+}
+
+// ---- Importação inteligente ----
+enum ImportacaoStatus {
+  PENDING
+  PROCESSING
+  REVISAO
+  DONE
+  FAILED
+}
+
+model ImportacaoArquivo {
+  id            String           @id @default(cuid())
+  empresaId     String
+  mesReferencia String           // "YYYY-MM"
+  tipo          String           // PDF | IMAGEM | XLSX | CSV | TXT
+  arquivoUrl    String?
+  status        ImportacaoStatus  @default(PENDING)
+  logs          Json?
+  payloadBruto  Json?
+  criadoPor     String?
+  revisadoPor   String?
+  revisadoEm   DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  empresa Empresa          @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  linhas  ImportacaoLinha[]
+}
+
+model ImportacaoLinha {
+  id                String   @id @default(cuid())
+  importacaoArquivoId String
+  colaborador       String
+  horas60           String?
+  horas100          String?
+  noturno           String?
+  interjornada      String?
+  desconto          String?
+  alocado           String?
+  planoDeSaude      String?
+  observacao        String?
+  rawLine           Json?
+  validado          Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  importacao ImportacaoArquivo @relation(fields: [importacaoArquivoId], references: [id], onDelete: Cascade)
 }
 
 model AuditLog {
   id        String   @id @default(cuid())
+  empresaId String?
+  userId    String?
   action    String
   actor     String?
   payload   Json?
   createdAt DateTime @default(now())
+
+  empresa Empresa? @relation(fields: [empresaId], references: [id], onDelete: SetNull)
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 }

@@ -33,6 +33,9 @@ const envSchema = z.object({
   GOOGLE_SHEETS_TAB: z.string().default('Registros'),
   DEVICE_TOKEN: z.string().default('local-demo'),
   TURSO_AUTH_TOKEN: z.string().optional(),
+  JWT_SECRET: z.string().min(16).default('change-me-in-production-min-32-chars'),
+  UPLOAD_DIR: z.string().default('./uploads'),
+  OPENAI_API_KEY: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);
