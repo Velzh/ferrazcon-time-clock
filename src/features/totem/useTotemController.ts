@@ -95,7 +95,8 @@ export function useTotemController() {
       await loadFaceModels();
       mainCameraRef.current = await startCamera(mainVideoRef.current, recognitionConstraints);
       setProgress(45);
-      window.setTimeout(() => transition('RECOGNITION'), 550);
+      setStatusLabel('Aguardando rosto');
+      setStatusMessage('Centralize seu rosto no guia');
     } catch (_error) {
       setStatusLabel('Erro de câmera');
       setStatusMessage('Não foi possível iniciar a câmera');
@@ -117,16 +118,21 @@ export function useTotemController() {
 
     if (state === 'WAKE') {
       stopMotion();
-      void startRecognitionMode();
-      return;
+      setStatusLabel('Iniciando');
+      setStatusMessage('Iniciando reconhecimento...');
+      setProgress(10);
+      const timeout = window.setTimeout(() => transition('RECOGNITION'), 450);
+      return () => window.clearTimeout(timeout);
     }
 
     if (state === 'RECOGNITION') {
-      setStatusLabel('Aguardando rosto');
-      setStatusMessage('Centralize seu rosto no guia');
+      if (!mainCameraRef.current) {
+        void startRecognitionMode();
+      }
 
       recognitionIntervalRef.current = window.setInterval(async () => {
         if (!mainVideoRef.current || isRecognizingRef.current) return;
+        if (!mainCameraRef.current) return;
         if (Date.now() < cooldownRef.current) return;
 
         isRecognizingRef.current = true;
