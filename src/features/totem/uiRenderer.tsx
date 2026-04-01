@@ -1,9 +1,16 @@
+import { useEffect, useState } from 'react';
 import { CheckCircle2, Loader2, XCircle } from 'lucide-react';
 import ferrazconLogo from '@/assets/ferrazcon-logo.png';
 import { TotemUiStatus } from './types';
 
 function ClockBlock() {
-  const now = new Date();
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   const time = now.toLocaleTimeString('pt-BR', { hour12: false });
   const date = now.toLocaleDateString('pt-BR');
 
@@ -30,13 +37,13 @@ export function TotemIdleView({ onWake }: { onWake: () => void }) {
     <button
       type="button"
       onClick={onWake}
-      className="w-full min-h-[100svh] bg-gradient-to-b from-[#020817] via-[#0b1120] to-black text-white flex flex-col outline-none"
+      className="w-full min-h-[100svh] bg-gradient-to-b from-[#020817] via-[#0b1120] to-black text-white grid grid-rows-[auto,1fr,auto] outline-none"
     >
       <header className="h-20 md:h-24 flex items-center justify-center px-4 pt-[max(env(safe-area-inset-top),8px)]">
         <img src={ferrazconLogo} alt="Ferrazcon" className="h-10 md:h-14 object-contain" />
       </header>
 
-      <main className="flex-1 flex items-center justify-center px-4">
+      <main className="flex items-center justify-center px-4">
         <ClockBlock />
       </main>
 

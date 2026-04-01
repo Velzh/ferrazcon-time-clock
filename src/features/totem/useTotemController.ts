@@ -41,6 +41,11 @@ export function useTotemController() {
   const recognitionIntervalRef = useRef<number | null>(null);
   const isRecognizingRef = useRef(false);
   const cooldownRef = useRef(0);
+  const lastActivityRef = useRef<number>(Date.now());
+
+  const touchActivity = useCallback(() => {
+    lastActivityRef.current = Date.now();
+  }, []);
 
   const transition = useCallback((next: TotemState) => {
     setState((prev) => resolveTransition(prev, next));
@@ -68,8 +73,9 @@ export function useTotemController() {
   }, []);
 
   const wake = useCallback(() => {
+    touchActivity();
     transition('WAKE');
-  }, [transition]);
+  }, [touchActivity, transition]);
 
   const startMotionMode = useCallback(async () => {
     if (!motionVideoRef.current || motionCameraRef.current) return;
@@ -77,12 +83,13 @@ export function useTotemController() {
     try {
       motionCameraRef.current = await startCamera(motionVideoRef.current, motionConstraints);
       motionDetectorRef.current = startMotionDetector(motionVideoRef.current, () => {
+        touchActivity();
         wake();
       });
     } catch (_error) {
       setStatusMessage('Toque na tela para iniciar');
     }
-  }, [wake]);
+  }, [touchActivity, wake]);
 
   const startRecognitionMode = useCallback(async () => {
     if (!mainVideoRef.current || mainCameraRef.current) return;
@@ -105,6 +112,31 @@ export function useTotemController() {
   }, [transition]);
 
   useEffect(() => {
+    const onAnyInteraction = () => touchActivity();
+    window.addEventListener('pointerdown', onAnyInteraction, { passive: true });
+    window.addEventListener('keydown', onAnyInteraction);
+    return () => {
+      window.removeEventListener('pointerdown', onAnyInteraction);
+      window.removeEventListener('keydown', onAnyInteraction);
+    };
+  }, [touchActivity]);
+
+  useEffect(() => {
+    if (state === 'IDLE') return;
+
+    const interval = window.setInterval(() => {
+      const inactiveForMs = Date.now() - lastActivityRef.current;
+
+      // Sempre voltar ao relógio se ficar tempo demais sem interação/movimento
+      if ((state === 'WAKE' || state === 'RECOGNITION') && inactiveForMs > 12_000) {
+        transition('RESET');
+      }
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [state, transition]);
+
+  useEffect(() => {
     if (state === 'IDLE') {
       stopMainCamera();
       setConfirmation(null);
@@ -112,6 +144,7 @@ export function useTotemController() {
       setProgress(0);
       setStatusLabel('Em espera');
       setStatusMessage('Aproxime-se ou toque na tela');
+      touchActivity();
       void startMotionMode();
       return;
     }
@@ -121,12 +154,14 @@ export function useTotemController() {
       setStatusLabel('Iniciando');
       setStatusMessage('Iniciando reconhecimento...');
       setProgress(10);
+      touchActivity();
       const timeout = window.setTimeout(() => transition('RECOGNITION'), 450);
       return () => window.clearTimeout(timeout);
     }
 
     if (state === 'RECOGNITION') {
       if (!mainCameraRef.current) {
+        touchActivity();
         void startRecognitionMode();
       }
 
@@ -146,6 +181,8 @@ export function useTotemController() {
             setProgress(15);
             return;
           }
+
+          touchActivity();
 
           if (!step.aligned) {
             setAlignStatus('MISALIGNED');
