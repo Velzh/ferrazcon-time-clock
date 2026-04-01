@@ -68,29 +68,46 @@ export function TotemRecognitionView({
   const isAligned = status.alignStatus === 'ALIGNED';
 
   return (
-    <div className="min-h-[100svh] bg-slate-950 text-white px-3 py-3 md:p-6">
-      <header className="h-14 md:h-20 flex items-center justify-center md:justify-start pt-[max(env(safe-area-inset-top),0px)]">
-        <img src={ferrazconLogo} alt="Ferrazcon" className="h-9 md:h-12 object-contain" />
+    <div className="min-h-[100svh] bg-slate-950 text-white px-2.5 py-2.5 md:p-6">
+      <header className="h-12 md:h-20 flex items-center justify-between md:justify-start gap-3 pt-[max(env(safe-area-inset-top),0px)] px-1 md:px-0">
+        <img src={ferrazconLogo} alt="Ferrazcon" className="h-8 md:h-12 object-contain" />
+        <div className="md:hidden text-[11px] font-semibold text-slate-300">
+          {status.statusLabel}
+        </div>
       </header>
 
-      <main className="mx-auto max-w-6xl grid gap-3 md:gap-5 lg:grid-cols-[1.55fr,1fr]">
-        <section className="rounded-2xl md:rounded-3xl border border-white/10 bg-black/40 p-2.5 md:p-4">
-          <div className="relative rounded-xl md:rounded-2xl overflow-hidden border border-white/10 bg-black aspect-[3/4] sm:aspect-[4/3]">
+      <main className="mx-auto max-w-6xl flex flex-col gap-3 md:gap-5 lg:grid lg:grid-cols-[1.55fr,1fr]">
+        <section className="relative rounded-2xl md:rounded-3xl border border-white/10 bg-black/40 p-2 md:p-4 flex-1">
+          <div className="relative rounded-xl md:rounded-2xl overflow-hidden border border-white/10 bg-black h-[72svh] sm:h-auto sm:aspect-[4/3] lg:aspect-[4/3]">
             <video ref={videoRef} autoPlay playsInline muted className="h-full w-full object-cover [transform:scaleX(-1)]" />
 
             <div
-              className={`absolute inset-5 sm:inset-8 md:inset-10 border-2 rounded-[22px] md:rounded-[28px] transition-colors ${
+              className={`absolute inset-4 sm:inset-8 md:inset-10 border-2 rounded-[20px] md:rounded-[28px] transition-colors ${
                 isAligned ? 'border-emerald-400' : 'border-rose-400'
               }`}
             />
 
-            <div className="absolute right-2.5 top-2.5 md:right-4 md:top-4 rounded-full px-2.5 md:px-3 py-1 text-[11px] md:text-xs font-semibold bg-black/60 border border-white/20">
+            <div className="absolute right-2 top-2 md:right-4 md:top-4 rounded-full px-2.5 md:px-3 py-1 text-[11px] md:text-xs font-semibold bg-black/60 border border-white/20">
               {isAligned ? 'Posição alinhada' : 'Ajuste sua posição'}
+            </div>
+
+            {/* Bottom sheet mobile */}
+            <div className="lg:hidden absolute left-2 right-2 bottom-2 rounded-2xl border border-white/10 bg-black/55 backdrop-blur p-3 space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-sky-200">{status.statusLabel}</p>
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${
+                    isAligned ? 'bg-emerald-400' : status.alignStatus === 'NO_FACE' ? 'bg-slate-400' : 'bg-rose-400'
+                  }`}
+                />
+              </div>
+              <p className="text-[13px] text-slate-200 leading-snug">{status.statusMessage}</p>
+              <ProgressBar value={status.progress} />
             </div>
           </div>
         </section>
 
-        <aside className="rounded-2xl md:rounded-3xl border border-white/10 bg-white/5 p-4 md:p-6 space-y-3.5 md:space-y-4">
+        <aside className="hidden lg:block rounded-2xl md:rounded-3xl border border-white/10 bg-white/5 p-4 md:p-6 space-y-3.5 md:space-y-4">
           <h2 className="text-lg md:text-xl font-semibold">Status</h2>
           <p className="text-base md:text-lg text-sky-200">{status.statusLabel}</p>
           <p className="text-sm md:text-base text-slate-300 leading-relaxed">{status.statusMessage}</p>
