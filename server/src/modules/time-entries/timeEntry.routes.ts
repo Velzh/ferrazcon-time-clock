@@ -3,7 +3,12 @@ import { TimeRecordType } from '@prisma/client';
 import { z } from 'zod';
 
 import { prisma } from '../../lib/prisma';
-import { getStartOfToday, getEndOfToday } from '../../lib/time-entry-logic';
+import {
+  getStartOfToday,
+  getEndOfToday,
+  parseYmdToEndOfDayInTz,
+  parseYmdToStartOfDayInTz,
+} from '../../lib/time-entry-logic';
 import { requireEmpresaScope, requireRole } from '../../lib/tenant';
 
 const manualEntrySchema = z.object({
@@ -74,15 +79,17 @@ export async function timeEntryRoutes(app: FastifyInstance) {
 
     if (from || to) {
       where.timestamp = {};
-      if (from) {
-        const d = new Date(from);
-        d.setHours(0, 0, 0, 0);
-        where.timestamp.gte = d;
-      }
-      if (to) {
-        const d = new Date(to);
-        d.setHours(23, 59, 59, 999);
-        where.timestamp.lte = d;
+      try {
+        if (from) {
+          where.timestamp.gte = parseYmdToStartOfDayInTz(from);
+        }
+        if (to) {
+          where.timestamp.lte = parseYmdToEndOfDayInTz(to);
+        }
+      } catch (err) {
+        return reply.code(400).send({
+          message: err instanceof Error ? err.message : 'Datas inválidas (use YYYY-MM-DD)',
+        });
       }
     }
 

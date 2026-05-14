@@ -28,6 +28,13 @@ import { getEmbeddingFromCanvas, loadFaceModels, getFaceApi } from '@/lib/faceAp
 import { CameraModal } from '@/components/CameraModal';
 import { RECORD_TYPE_LABELS } from '@/types/timeClock';
 
+function formatLocalYmd(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export function AdminPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -67,6 +74,12 @@ export function AdminPage() {
       setSelectedEmpresaId(list[0].id);
     }
   }, [user?.role, empresasQuery.data, selectedEmpresaId, setSelectedEmpresaId]);
+
+  useEffect(() => {
+    if (!selectedEmpresaId) return;
+    setPointsFrom((prev) => (prev ? prev : formatLocalYmd(new Date())));
+    setPointsTo((prev) => (prev ? prev : formatLocalYmd(new Date())));
+  }, [selectedEmpresaId]);
 
   const employeesQuery = useQuery({
     queryKey: ['employees', selectedEmpresaId],
@@ -451,7 +464,17 @@ export function AdminPage() {
                     />
                   </div>
                   <Button
-                    onClick={() => setPointsQueryEnabled(true)}
+                    onClick={() => {
+                      if (!pointsFrom || !pointsTo) {
+                        toast({
+                          title: 'Período incompleto',
+                          description: 'Informe a data inicial e a data final.',
+                          variant: 'destructive',
+                        });
+                        return;
+                      }
+                      setPointsQueryEnabled(true);
+                    }}
                     disabled={!selectedEmpresaId}
                   >
                     Buscar
