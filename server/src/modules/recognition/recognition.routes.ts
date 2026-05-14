@@ -169,10 +169,10 @@ export async function recognitionRoutes(app: FastifyInstance) {
       });
     }
 
-    // Validação rigorosa: só aceita se a similaridade for acima do threshold
-    // FORÇA o threshold mínimo - nunca aceita abaixo disso
-    const MINIMUM_THRESHOLD = Math.max(env.FACIAL_THRESHOLD, 0.90); // Garante pelo menos 0.90
-    
+    // Usa apenas o threshold configurado (ex.: FACIAL_THRESHOLD no .env / Portainer).
+    // Evita piso fixo extra que duplicava exigência quando FACIAL_THRESHOLD já era 0.90.
+    const MINIMUM_THRESHOLD = env.FACIAL_THRESHOLD;
+
     if (!bestEmployee || bestSimilarity < MINIMUM_THRESHOLD) {
       request.log.warn({
         bestSimilarity,

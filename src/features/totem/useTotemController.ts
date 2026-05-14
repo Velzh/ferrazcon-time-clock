@@ -4,6 +4,7 @@ import { CameraSession, startCamera } from './cameraController';
 import { runRecognitionStep } from './faceRecognition';
 import { MotionDetector, startMotionDetector } from './motionDetector';
 import { resolveTransition } from './stateManager';
+import { isLikelyIOS, sleep } from './device';
 import { ConfirmationData, FaceAlignStatus, TotemState, TotemUiStatus } from './types';
 
 const recognitionConstraints: MediaStreamConstraints = {
@@ -99,6 +100,11 @@ export function useTotemController() {
     setProgress(20);
 
     try {
+      // Safari iOS: tempo entre parar a câmera "leve" e abrir a principal reduz falhas na 1ª abertura.
+      if (isLikelyIOS()) {
+        await sleep(420);
+      }
+
       await loadFaceModels();
       mainCameraRef.current = await startCamera(mainVideoRef.current, recognitionConstraints);
       setProgress(45);
@@ -145,8 +151,20 @@ export function useTotemController() {
       setStatusLabel('Em espera');
       setStatusMessage('Aproxime-se ou toque na tela');
       touchActivity();
-      void startMotionMode();
-      return;
+
+      let cancelled = false;
+      void (async () => {
+        if (isLikelyIOS()) {
+          await sleep(320);
+        }
+        if (!cancelled) {
+          await startMotionMode();
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+      };
     }
 
     if (state === 'WAKE') {
@@ -155,7 +173,8 @@ export function useTotemController() {
       setStatusMessage('Iniciando reconhecimento...');
       setProgress(10);
       touchActivity();
-      const timeout = window.setTimeout(() => transition('RECOGNITION'), 450);
+      const wakeDelay = isLikelyIOS() ? 650 : 450;
+      const timeout = window.setTimeout(() => transition('RECOGNITION'), wakeDelay);
       return () => window.clearTimeout(timeout);
     }
 

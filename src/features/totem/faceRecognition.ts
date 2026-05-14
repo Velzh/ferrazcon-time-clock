@@ -12,15 +12,26 @@ export interface RecognitionStep {
 }
 
 function isFaceAligned(box: { x: number; y: number; width: number; height: number }, video: HTMLVideoElement) {
+  const w = video.videoWidth;
+  const h = video.videoHeight;
+  if (!w || !h) return false;
+
   const cx = box.x + box.width / 2;
   const cy = box.y + box.height / 2;
 
-  const centerX = Math.abs(cx / video.videoWidth - 0.5);
-  const centerY = Math.abs(cy / video.videoHeight - 0.5);
-  const faceRatio = box.width / video.videoWidth;
+  const centerX = Math.abs(cx / w - 0.5);
+  const centerY = Math.abs(cy / h - 0.5);
+  const faceRatio = box.width / w;
 
-  const isCentered = centerX < 0.18 && centerY < 0.2;
-  const isSized = faceRatio > 0.2 && faceRatio < 0.65;
+  // Celular em pé / telas estreitas: relaxa um pouco para não bloquear o envio ao backend.
+  const narrow = w < 720 || h > w;
+  const tolX = narrow ? 0.26 : 0.18;
+  const tolY = narrow ? 0.28 : 0.2;
+  const minRatio = narrow ? 0.14 : 0.2;
+  const maxRatio = narrow ? 0.78 : 0.65;
+
+  const isCentered = centerX < tolX && centerY < tolY;
+  const isSized = faceRatio > minRatio && faceRatio < maxRatio;
   return isCentered && isSized;
 }
 
@@ -50,6 +61,16 @@ export async function runRecognitionStep(video: HTMLVideoElement): Promise<Recog
       embedding: normalize(Array.from(result.descriptor)),
       deviceId: DEVICE_ID,
     });
+
+    const debugTotem = import.meta.env.VITE_DEBUG_TOTEM === 'true';
+    if (debugTotem && response && !response.matched) {
+      console.warn('[totem] reconhecimento não casou', {
+        vw: video.videoWidth,
+        vh: video.videoHeight,
+        similarity: response.similarity,
+        message: response.message,
+      });
+    }
 
     return {
       hasFace: true,
