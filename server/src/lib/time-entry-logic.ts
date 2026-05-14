@@ -33,6 +33,14 @@ export function parseYmdToEndOfDayInTz(ymd: string): Date {
   return dayjs.tz(ymd, 'YYYY-MM-DD', env.TZ).endOf('day').toDate();
 }
 
+/** Fim do intervalo em `[início, fim)` — evita bugs de milissegundo com `endOf('day')` em drivers/SQLite. */
+export function parseYmdToExclusiveEndInTz(ymd: string): Date {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+    throw new Error('Data inválida: use YYYY-MM-DD');
+  }
+  return dayjs.tz(ymd, 'YYYY-MM-DD', env.TZ).add(1, 'day').startOf('day').toDate();
+}
+
 export function getNextRecordType(records: Pick<TimeEntry, 'type'>[]): TimeRecordType | null {
   for (const type of TIME_RECORD_SEQUENCE) {
     if (!records.some((record) => record.type === type)) {

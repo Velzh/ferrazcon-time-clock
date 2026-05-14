@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, PlusCircle, UserPlus, Trash2, Fingerprint, LogOut, FileText, Upload, Download } from 'lucide-react';
 
 import { Header } from '@/components/Header';
@@ -35,7 +35,16 @@ function formatLocalYmd(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/** Exibe YYYY-MM-DD como DD/MM/AAAA (calendário local, sem deslocar fuso). */
+function formatYmdToPtBr(ymd: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd.trim());
+  if (!m) return ymd;
+  const [, y, mo, d] = m;
+  return `${d}/${mo}/${y}`;
+}
+
 export function AdminPage() {
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { isAuthenticated, user, logout, selectedEmpresaId, setSelectedEmpresaId } = useAuth();
@@ -442,7 +451,8 @@ export function AdminPage() {
               <CardHeader>
                 <CardTitle>Relação de pontos registrados</CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  Defina o período e clique em Buscar para ver todos os registros de ponto da empresa.
+                  Defina o período e clique em Buscar para ver todos os registros de ponto da empresa. O filtro usa o
+                  fuso configurado na API (ex.: America/Sao_Paulo).
                 </p>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -464,6 +474,19 @@ export function AdminPage() {
                     />
                   </div>
                   <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      const ymd = formatLocalYmd(new Date());
+                      setPointsFrom(ymd);
+                      setPointsTo(ymd);
+                      setPointsQueryEnabled(true);
+                    }}
+                    disabled={!selectedEmpresaId}
+                  >
+                    Hoje
+                  </Button>
+                  <Button
                     onClick={() => {
                       if (!pointsFrom || !pointsTo) {
                         toast({
@@ -474,12 +497,26 @@ export function AdminPage() {
                         return;
                       }
                       setPointsQueryEnabled(true);
+                      void queryClient.invalidateQueries({
+                        queryKey: ['time-entries-period', selectedEmpresaId, pointsFrom, pointsTo],
+                      });
                     }}
                     disabled={!selectedEmpresaId}
                   >
                     Buscar
                   </Button>
                 </div>
+                {pointsFrom && pointsTo && (
+                  <p className="text-xs text-muted-foreground">
+                    Período consultado: {formatYmdToPtBr(pointsFrom)} a {formatYmdToPtBr(pointsTo)}. Se a lista vier
+                    vazia mas existirem batidas recentes, confira se o ano nas datas está correto.
+                  </p>
+                )}
+                {pointsQueryEnabled && pointsByPeriodQuery.isError && (
+                  <p className="text-sm text-destructive">
+                    {(pointsByPeriodQuery.error as Error)?.message ?? 'Erro ao buscar registros.'}
+                  </p>
+                )}
                 {pointsQueryEnabled && (
                   <div className="rounded-md border overflow-auto max-h-[400px]">
                     <Table>
@@ -505,7 +542,9 @@ export function AdminPage() {
                             </TableCell>
                           </TableRow>
                         )}
-                        {pointsByPeriodQuery.isSuccess && !(pointsByPeriodQuery.data?.length) && (
+                        {pointsByPeriodQuery.isSuccess &&
+                          !(pointsByPeriodQuery.data?.length) &&
+                          !pointsByPeriodQuery.isFetching && (
                           <TableRow>
                             <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
                               Nenhum registro no período.

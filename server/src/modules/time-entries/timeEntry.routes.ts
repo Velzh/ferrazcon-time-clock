@@ -6,7 +6,7 @@ import { prisma } from '../../lib/prisma';
 import {
   getStartOfToday,
   getEndOfToday,
-  parseYmdToEndOfDayInTz,
+  parseYmdToExclusiveEndInTz,
   parseYmdToStartOfDayInTz,
 } from '../../lib/time-entry-logic';
 import { requireEmpresaScope, requireRole } from '../../lib/tenant';
@@ -19,6 +19,19 @@ const manualEntrySchema = z.object({
 });
 
 const ENTRY_ROLES = ['ADMIN', 'GESTOR', 'ATENDENTE', 'BALCAO'] as const;
+
+function firstQueryString(value: unknown): string | undefined {
+  if (value == null) return undefined;
+  if (typeof value === 'string') {
+    const t = value.trim();
+    return t.length ? t : undefined;
+  }
+  if (Array.isArray(value) && typeof value[0] === 'string') {
+    const t = value[0].trim();
+    return t.length ? t : undefined;
+  }
+  return undefined;
+}
 
 export async function timeEntryRoutes(app: FastifyInstance) {
   app.get('/api/time-entries/today', async (request, reply) => {
@@ -70,10 +83,13 @@ export async function timeEntryRoutes(app: FastifyInstance) {
     requireRole(request, reply, [...ENTRY_ROLES]);
     if (reply.sent) return;
 
-    const { from, to, limit = '500' } = request.query as { from?: string; to?: string; limit?: string };
-    const parsedLimit = Math.min(Math.max(Number(limit) || 500, 1), 2000);
+    const rawQ = request.query as Record<string, unknown>;
+    const from = firstQueryString(rawQ.from);
+    const to = firstQueryString(rawQ.to);
+    const limitRaw = firstQueryString(rawQ.limit) ?? '500';
+    const parsedLimit = Math.min(Math.max(Number(limitRaw) || 500, 1), 2000);
 
-    const where: { employee: { empresaId: string }; timestamp?: { gte?: Date; lte?: Date } } = {
+    const where: { employee: { empresaId: string }; timestamp?: { gte?: Date; lt?: Date } } = {
       employee: { empresaId },
     };
 
@@ -84,7 +100,7 @@ export async function timeEntryRoutes(app: FastifyInstance) {
           where.timestamp.gte = parseYmdToStartOfDayInTz(from);
         }
         if (to) {
-          where.timestamp.lte = parseYmdToEndOfDayInTz(to);
+          where.timestamp.lt = parseYmdToExclusiveEndInTz(to);
         }
       } catch (err) {
         return reply.code(400).send({

@@ -1,9 +1,11 @@
 import dayjsBase from 'dayjs';
+import customParseFormat from 'dayjs/plugin/customParseFormat.js';
 import utc from 'dayjs/plugin/utc.js';
 import timezone from 'dayjs/plugin/timezone.js';
 
 import { env } from '../config/env';
 
+dayjsBase.extend(customParseFormat);
 dayjsBase.extend(utc);
 dayjsBase.extend(timezone);
 
