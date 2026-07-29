@@ -5,9 +5,15 @@ import { prisma } from '../../lib/prisma';
 import { requireEmpresaScope, requireRole } from '../../lib/tenant';
 
 const createEmployeeSchema = z.object({
-  identifier: z.string().min(2),
-  name: z.string().min(2),
-  email: z.string().email().optional(),
+  identifier: z.string().trim().min(1, 'Informe a matrícula / ID interno'),
+  name: z.string().trim().min(2, 'Informe o nome completo'),
+  email: z
+    .string()
+    .trim()
+    .email('E-mail inválido')
+    .optional()
+    .or(z.literal(''))
+    .transform((v) => (v === '' ? undefined : v)),
 });
 
 const enrollSchema = z.object({
@@ -54,11 +60,18 @@ export async function employeeRoutes(app: FastifyInstance) {
     requireRole(request, reply, [...EMPRESA_SCOPED_ROLES]);
     if (reply.sent) return;
 
-    const payload = createEmployeeSchema.parse(request.body);
+    const parsed = createEmployeeSchema.safeParse(request.body);
+    if (!parsed.success) {
+      const first = parsed.error.issues[0];
+      return reply.code(400).send({
+        message: first?.message ?? 'Dados inválidos',
+        issues: parsed.error.issues,
+      });
+    }
 
     const employee = await prisma.employee.create({
       data: {
-        ...payload,
+        ...parsed.data,
         empresaId,
       },
     });
