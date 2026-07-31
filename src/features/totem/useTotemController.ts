@@ -2,24 +2,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { loadFaceModels } from '@/lib/faceApi';
 import { CameraSession, startCamera } from './cameraController';
 import { runRecognitionStep } from './faceRecognition';
-import { MotionDetector, startMotionDetector } from './motionDetector';
 import { resolveTransition } from './stateManager';
 import { isLikelyIOS, sleep } from './device';
-import { ConfirmationData, FaceAlignStatus, TotemState, TotemUiStatus } from './types';
+import { ConfirmationData, FaceAlignStatus, TotemBootStatus, TotemState, TotemUiStatus } from './types';
 
+/** Constraints estáveis: evita “zoom” por troca de resolução alta/baixa. */
 const recognitionConstraints: MediaStreamConstraints = {
-  video: { width: { ideal: 960 }, height: { ideal: 720 }, facingMode: 'user' },
   audio: false,
-};
-
-const motionConstraints: MediaStreamConstraints = {
   video: {
-    width: { ideal: 320 },
-    height: { ideal: 240 },
-    facingMode: 'user',
-    frameRate: { ideal: 7, max: 10 },
+    facingMode: { ideal: 'user' },
+    width: { ideal: 640 },
+    height: { ideal: 480 },
+    frameRate: { ideal: 24, max: 30 },
   },
-  audio: false,
 };
 
 function randomResetMs() {
@@ -28,21 +23,21 @@ function randomResetMs() {
 
 export function useTotemController() {
   const mainVideoRef = useRef<HTMLVideoElement>(null);
-  const motionVideoRef = useRef<HTMLVideoElement>(null);
+  const [bootStatus, setBootStatus] = useState<TotemBootStatus>('loading');
+  const [bootMessage, setBootMessage] = useState('Carregando totem...');
   const [state, setState] = useState<TotemState>('IDLE');
   const [statusLabel, setStatusLabel] = useState('Em espera');
-  const [statusMessage, setStatusMessage] = useState('Aproxime-se ou toque na tela');
+  const [statusMessage, setStatusMessage] = useState('Toque na tela para bater o ponto');
   const [progress, setProgress] = useState(0);
   const [alignStatus, setAlignStatus] = useState<FaceAlignStatus>('NO_FACE');
   const [confirmation, setConfirmation] = useState<ConfirmationData | null>(null);
 
   const mainCameraRef = useRef<CameraSession | null>(null);
-  const motionCameraRef = useRef<CameraSession | null>(null);
-  const motionDetectorRef = useRef<MotionDetector | null>(null);
   const recognitionIntervalRef = useRef<number | null>(null);
   const isRecognizingRef = useRef(false);
   const cooldownRef = useRef(0);
   const lastActivityRef = useRef<number>(Date.now());
+  const startingCameraRef = useRef(false);
 
   const touchActivity = useCallback(() => {
     lastActivityRef.current = Date.now();
@@ -64,58 +59,75 @@ export function useTotemController() {
     stopRecognitionLoop();
     mainCameraRef.current?.stop();
     mainCameraRef.current = null;
+    startingCameraRef.current = false;
   }, [stopRecognitionLoop]);
 
-  const stopMotion = useCallback(() => {
-    motionDetectorRef.current?.stop();
-    motionDetectorRef.current = null;
-    motionCameraRef.current?.stop();
-    motionCameraRef.current = null;
-  }, []);
-
   const wake = useCallback(() => {
+    if (bootStatus !== 'ready') return;
     touchActivity();
     transition('WAKE');
-  }, [touchActivity, transition]);
-
-  const startMotionMode = useCallback(async () => {
-    if (!motionVideoRef.current || motionCameraRef.current) return;
-
-    try {
-      motionCameraRef.current = await startCamera(motionVideoRef.current, motionConstraints);
-      motionDetectorRef.current = startMotionDetector(motionVideoRef.current, () => {
-        touchActivity();
-        wake();
-      });
-    } catch (_error) {
-      setStatusMessage('Toque na tela para iniciar');
-    }
-  }, [touchActivity, wake]);
+  }, [bootStatus, touchActivity, transition]);
 
   const startRecognitionMode = useCallback(async () => {
-    if (!mainVideoRef.current || mainCameraRef.current) return;
+    if (!mainVideoRef.current || mainCameraRef.current || startingCameraRef.current) return;
 
+    startingCameraRef.current = true;
     setStatusLabel('Iniciando');
-    setStatusMessage('Iniciando reconhecimento...');
+    setStatusMessage('Liberando câmera...');
     setProgress(20);
 
     try {
-      // Safari iOS: tempo entre parar a câmera "leve" e abrir a principal reduz falhas na 1ª abertura.
+      // Safari iOS: pequeno atraso ajuda após troca de tela.
       if (isLikelyIOS()) {
-        await sleep(420);
+        await sleep(280);
       }
 
+      // Modelos já devem estar no bootstrap; reforça sem custo se já carregados.
       await loadFaceModels();
+
+      if (!mainVideoRef.current) {
+        throw new Error('Elemento de vídeo indisponível');
+      }
+
       mainCameraRef.current = await startCamera(mainVideoRef.current, recognitionConstraints);
       setProgress(45);
       setStatusLabel('Aguardando rosto');
       setStatusMessage('Centralize seu rosto no guia');
+      touchActivity();
     } catch (_error) {
       setStatusLabel('Erro de câmera');
-      setStatusMessage('Não foi possível iniciar a câmera');
+      setStatusMessage('Permita o acesso à câmera e toque novamente');
+      startingCameraRef.current = false;
       transition('RESET');
+      return;
+    } finally {
+      startingCameraRef.current = false;
     }
-  }, [transition]);
+  }, [touchActivity, transition]);
+
+  // Bootstrap: carrega modelos assim que o totem abre (1ª visita).
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        setBootStatus('loading');
+        setBootMessage('Carregando reconhecimento facial...');
+        await loadFaceModels();
+        if (cancelled) return;
+        setBootStatus('ready');
+        setBootMessage('Totem pronto');
+      } catch (_error) {
+        if (cancelled) return;
+        setBootStatus('error');
+        setBootMessage('Falha ao carregar o totem. Recarregue a página.');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const onAnyInteraction = () => touchActivity();
@@ -132,8 +144,6 @@ export function useTotemController() {
 
     const interval = window.setInterval(() => {
       const inactiveForMs = Date.now() - lastActivityRef.current;
-
-      // Sempre voltar ao relógio se ficar tempo demais sem interação/movimento
       if ((state === 'WAKE' || state === 'RECOGNITION') && inactiveForMs > 12_000) {
         transition('RESET');
       }
@@ -149,17 +159,27 @@ export function useTotemController() {
       setAlignStatus('NO_FACE');
       setProgress(0);
       setStatusLabel('Em espera');
-      setStatusMessage('Aproxime-se ou toque na tela');
+      setStatusMessage('Toque na tela para bater o ponto');
+      touchActivity();
+      return;
+    }
+
+    if (state === 'WAKE') {
+      setStatusLabel('Iniciando');
+      setStatusMessage('Iniciando reconhecimento...');
+      setProgress(10);
       touchActivity();
 
       let cancelled = false;
       void (async () => {
-        if (isLikelyIOS()) {
-          await sleep(320);
+        // Liga a câmera ainda no WAKE (vídeo já montado, só oculto) para estabilizar antes de mostrar.
+        if (!mainCameraRef.current) {
+          await startRecognitionMode();
         }
-        if (!cancelled) {
-          await startMotionMode();
-        }
+        if (cancelled) return;
+        const settle = isLikelyIOS() ? 350 : 180;
+        await sleep(settle);
+        if (!cancelled) transition('RECOGNITION');
       })();
 
       return () => {
@@ -167,19 +187,8 @@ export function useTotemController() {
       };
     }
 
-    if (state === 'WAKE') {
-      stopMotion();
-      setStatusLabel('Iniciando');
-      setStatusMessage('Iniciando reconhecimento...');
-      setProgress(10);
-      touchActivity();
-      const wakeDelay = isLikelyIOS() ? 650 : 450;
-      const timeout = window.setTimeout(() => transition('RECOGNITION'), wakeDelay);
-      return () => window.clearTimeout(timeout);
-    }
-
     if (state === 'RECOGNITION') {
-      if (!mainCameraRef.current) {
+      if (!mainCameraRef.current && !startingCameraRef.current) {
         touchActivity();
         void startRecognitionMode();
       }
@@ -260,14 +269,13 @@ export function useTotemController() {
       const timeout = window.setTimeout(() => transition('IDLE'), randomResetMs());
       return () => window.clearTimeout(timeout);
     }
-  }, [state, startMotionMode, startRecognitionMode, stopMainCamera, stopMotion, stopRecognitionLoop, transition]);
+  }, [state, startRecognitionMode, stopMainCamera, stopRecognitionLoop, touchActivity, transition]);
 
   useEffect(() => {
     return () => {
-      stopMotion();
       stopMainCamera();
     };
-  }, [stopMainCamera, stopMotion]);
+  }, [stopMainCamera]);
 
   const uiStatus: TotemUiStatus = useMemo(
     () => ({
@@ -277,13 +285,14 @@ export function useTotemController() {
       progress,
       alignStatus,
       confirmation,
+      bootStatus,
+      bootMessage,
     }),
-    [alignStatus, confirmation, progress, state, statusLabel, statusMessage]
+    [alignStatus, bootMessage, bootStatus, confirmation, progress, state, statusLabel, statusMessage]
   );
 
   return {
     mainVideoRef,
-    motionVideoRef,
     uiStatus,
     wake,
   };

@@ -2,6 +2,8 @@ import { RecognitionResponse } from '@/types/timeClock';
 
 export type TotemState = 'IDLE' | 'WAKE' | 'RECOGNITION' | 'CONFIRMATION' | 'RESET';
 
+export type TotemBootStatus = 'loading' | 'ready' | 'error';
+
 export type FaceAlignStatus = 'NO_FACE' | 'MISALIGNED' | 'ALIGNED';
 
 export interface ConfirmationData {
@@ -17,4 +19,6 @@ export interface TotemUiStatus {
   progress: number;
   alignStatus: FaceAlignStatus;
   confirmation: ConfirmationData | null;
+  bootStatus: TotemBootStatus;
+  bootMessage: string;
 }

@@ -48,9 +48,29 @@ export function TotemIdleView({ onWake }: { onWake: () => void }) {
       </main>
 
       <footer className="pb-[max(env(safe-area-inset-bottom),18px)] text-center text-slate-400 text-sm md:text-base">
-        Aproxime-se ou toque na tela
+        Toque na tela para bater o ponto
       </footer>
     </button>
+  );
+}
+
+export function TotemBootView({ message, error }: { message: string; error?: boolean }) {
+  return (
+    <div className="min-h-[100svh] bg-gradient-to-b from-[#020817] via-[#0b1120] to-black text-white flex flex-col items-center justify-center gap-5 px-6">
+      <img src={ferrazconLogo} alt="Ferrazcon" className="h-12 md:h-16 object-contain" />
+      {!error && <Loader2 className="h-10 w-10 animate-spin text-sky-300" />}
+      {error && <XCircle className="h-10 w-10 text-rose-300" />}
+      <p className="text-center text-base md:text-lg text-slate-200 max-w-md">{message}</p>
+      {error && (
+        <button
+          type="button"
+          className="mt-2 rounded-xl bg-sky-500/20 border border-sky-400/40 px-5 py-2.5 text-sm font-semibold"
+          onClick={() => window.location.reload()}
+        >
+          Recarregar
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -60,6 +80,7 @@ export function TotemWakeView() {
       <div className="text-center space-y-4">
         <Loader2 className="h-10 w-10 mx-auto animate-spin text-sky-300" />
         <p className="text-lg md:text-xl font-semibold">Iniciando reconhecimento...</p>
+        <p className="text-sm text-slate-400">Se pedir, permita o acesso à câmera</p>
       </div>
     </div>
   );
@@ -85,8 +106,14 @@ export function TotemRecognitionView({
 
       <main className="mx-auto max-w-6xl flex flex-col gap-3 md:gap-5 lg:grid lg:grid-cols-[1.55fr,1fr]">
         <section className="relative rounded-2xl md:rounded-3xl border border-white/10 bg-black/40 p-2 md:p-4 flex-1">
-          <div className="relative rounded-xl md:rounded-2xl overflow-hidden border border-white/10 bg-black h-[72svh] sm:h-auto sm:aspect-[4/3] lg:aspect-[4/3]">
-            <video ref={videoRef} autoPlay playsInline muted className="h-full w-full object-cover [transform:scaleX(-1)]" />
+          <div className="relative rounded-xl md:rounded-2xl overflow-hidden border border-white/10 bg-black h-[72svh] sm:h-auto sm:aspect-[4/3] lg:aspect-[4/3] flex items-center justify-center">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="max-h-full max-w-full h-full w-full object-contain [transform:scaleX(-1)] bg-black"
+            />
 
             <div
               className={`absolute inset-4 sm:inset-8 md:inset-10 border-2 rounded-[20px] md:rounded-[28px] transition-colors ${
