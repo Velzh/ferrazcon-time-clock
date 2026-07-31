@@ -171,7 +171,11 @@ export function CameraModal({ isOpen, onClose, onConfirm, recordTypeLabel }: Cam
             )}
 
             {capturedPhoto && photoPreviewUrl && (
-              <img src={photoPreviewUrl} alt="Foto capturada" className="w-full h-full object-cover" />
+              <img
+                src={photoPreviewUrl}
+                alt="Foto capturada"
+                className="max-w-full max-h-full w-auto h-auto object-contain"
+              />
             )}
 
             {cameraError && !capturedPhoto && (
