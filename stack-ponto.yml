@@ -10,8 +10,8 @@ services:
       TZ: America/Sao_Paulo
       DATABASE_URL: file:./data/dev.db
       JWT_SECRET: "TROQUE_JWT_SECRET"
-      FACIAL_THRESHOLD: "0.55"
-      FACIAL_MARGIN: "0.06"
+      FACIAL_THRESHOLD: "0.40"
+      FACIAL_MARGIN: "0.05"
       RECOG_ENGINE: python
       RECOG_PY_URL: http://recog-py:8000
       RECOG_ALGORITHM: deepface-facenet512

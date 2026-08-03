@@ -6,10 +6,10 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(4000),
   DATABASE_URL: z.string().min(1),
   TZ: z.string().default('America/Sao_Paulo'),
-  /** Similaridade mínima (cosine). Facenet512 ≈ 0.55–0.65; face-api.js legado ≈ 0.90 */
-  FACIAL_THRESHOLD: z.coerce.number().default(0.55),
+  /** Similaridade mínima (cosine). Facenet512: foto de cadastro vs webcam costuma ficar ~0.40–0.65 */
+  FACIAL_THRESHOLD: z.coerce.number().default(0.40),
   /** Margem mínima entre 1º e 2º colaborador para aceitar o match */
-  FACIAL_MARGIN: z.coerce.number().default(0.06),
+  FACIAL_MARGIN: z.coerce.number().default(0.05),
   /** python = DeepFace na VPS; js = embedding vindo do browser (legado) */
   RECOG_ENGINE: z.enum(['python', 'js']).default('python'),
   RECOG_PY_URL: z.string().default('http://recog-py:8000'),

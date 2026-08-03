@@ -78,12 +78,38 @@ async function matchAgainstGallery(params: {
     include: { employee: true },
   });
 
-  if (!embeddings.length) {
+  // Se filtrou por algoritmo Python e não achou nada, tenta embeddings com o mesmo tamanho do candidato
+  // (evita “sumiço” por string de algorithm diferente).
+  let gallery = embeddings;
+  if (!gallery.length && algorithmFilter) {
+    const all = await prisma.faceEmbedding.findMany({
+      where: empresaId ? { employee: { empresaId } } : undefined,
+      include: { employee: true },
+    });
+    gallery = all.filter((e) => {
+      try {
+        return parseEmbedding(e.embedding).length === candidate.length;
+      } catch {
+        return false;
+      }
+    });
+    request.log.warn(
+      {
+        algorithmFilter,
+        totalEmbeddings: all.length,
+        compatible: gallery.length,
+        algorithms: [...new Set(all.map((e) => e.algorithm))],
+      },
+      'No embeddings for algorithm filter; falling back to same-dimension vectors'
+    );
+  }
+
+  if (!gallery.length) {
     return {
       ok: false,
       bestSimilarity: -1,
       message: algorithmFilter
-        ? 'Nenhuma biometria Python cadastrada. Recadastre os rostos no admin.'
+        ? 'Nenhuma biometria Python cadastrada. No admin, use Capturar rosto de novo (1 foto nítida).'
         : 'Nenhuma biometria cadastrada',
     };
   }
@@ -93,7 +119,7 @@ async function matchAgainstGallery(params: {
   let bestEmbeddingId: string | null = null;
   const allSimilarities: Array<{ employeeId: string; employeeName: string; similarity: number }> = [];
 
-  for (const embedding of embeddings) {
+  for (const embedding of gallery) {
     try {
       let storedEmbedding = parseEmbedding(embedding.embedding);
       if (candidate.length !== storedEmbedding.length) {

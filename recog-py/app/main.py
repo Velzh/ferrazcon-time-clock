@@ -25,10 +25,10 @@ DETECTOR_BACKEND = os.getenv("DETECTOR_BACKEND", "opencv")
 ALGORITHM = os.getenv("ALGORITHM", f"deepface-{MODEL_NAME.lower()}")
 
 # Razões do rosto em relação à largura da imagem (guia oval no totem)
-FACE_RATIO_MIN = float(os.getenv("FACE_RATIO_MIN", "0.28"))
-FACE_RATIO_MAX = float(os.getenv("FACE_RATIO_MAX", "0.58"))
-CENTER_TOL_X = float(os.getenv("CENTER_TOL_X", "0.14"))
-CENTER_TOL_Y = float(os.getenv("CENTER_TOL_Y", "0.16"))
+FACE_RATIO_MIN = float(os.getenv("FACE_RATIO_MIN", "0.22"))
+FACE_RATIO_MAX = float(os.getenv("FACE_RATIO_MAX", "0.68"))
+CENTER_TOL_X = float(os.getenv("CENTER_TOL_X", "0.18"))
+CENTER_TOL_Y = float(os.getenv("CENTER_TOL_Y", "0.20"))
 
 AlignStatus = Literal[
     "NO_FACE",
