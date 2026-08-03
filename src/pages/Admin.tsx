@@ -158,7 +158,7 @@ export function AdminPage() {
     mutationFn: ({ employeeId, imagesBase64 }: { employeeId: string; imagesBase64: string[] }) =>
       employeeService.enroll(employeeId, { imagesBase64, replace: true }),
     onSuccess: () => {
-      toast({ title: 'Biometria registrada', description: '3 capturas salvas com DeepFace.', variant: 'default' });
+      toast({ title: 'Biometria registrada', description: 'Foto salva com DeepFace.', variant: 'default' });
       void employeesQuery.refetch();
     },
     onError: (error: Error) => {
@@ -715,11 +715,9 @@ export function AdminPage() {
         onClose={() => setIsCameraOpen(false)}
         onConfirm={handlePhotoConfirm}
         recordTypeLabel="Cadastro biométrico"
-        requiredCaptures={3}
+        requiredCaptures={1}
         captureHints={[
-          'Foto 1/3 — rosto de frente no oval',
-          'Foto 2/3 — leve giro à esquerda',
-          'Foto 3/3 — leve giro à direita',
+          'Encaixe o rosto no oval com boa luz (1 foto nítida)',
         ]}
       />
     </div>

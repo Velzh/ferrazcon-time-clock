@@ -14,7 +14,7 @@ export interface RecognitionStep {
   errorMessage?: string;
 }
 
-/** Captura frame JPEG do vídeo (espelhado como na UI). */
+/** Captura frame JPEG do vídeo (mesma orientação da câmera — sem espelhar). */
 export function captureVideoFrameBase64(video: HTMLVideoElement, quality = 0.82): string | null {
   if (!video.videoWidth || !video.videoHeight) return null;
   const canvas = document.createElement('canvas');
@@ -22,12 +22,10 @@ export function captureVideoFrameBase64(video: HTMLVideoElement, quality = 0.82)
   canvas.height = video.videoHeight;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
-  // Espelha para bater com o preview do usuário
-  ctx.translate(canvas.width, 0);
-  ctx.scale(-1, 1);
+  // NÃO espelhar: o preview usa CSS mirror só para UX; o embedding precisa
+  // bater com a foto cadastrada (upload/câmera sem flip).
   ctx.drawImage(video, 0, 0);
-  const dataUrl = canvas.toDataURL('image/jpeg', quality);
-  return dataUrl;
+  return canvas.toDataURL('image/jpeg', quality);
 }
 
 let stableAlignedCount = 0;
