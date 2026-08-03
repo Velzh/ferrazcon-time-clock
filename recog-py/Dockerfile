@@ -5,7 +5,8 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     DEEPFACE_HOME=/data/deepface \
-    TF_CPP_MIN_LOG_LEVEL=2
+    TF_CPP_MIN_LOG_LEVEL=2 \
+    TF_USE_LEGACY_KERAS=1
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
