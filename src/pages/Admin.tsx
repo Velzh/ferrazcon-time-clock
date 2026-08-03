@@ -24,7 +24,6 @@ import { employeeService } from '@/services/employeeService';
 import { timeEntryService } from '@/services/timeEntryService';
 import { folhaService } from '@/services/folhaService';
 import { importacaoService, type ImportacaoDetail, type ImportacaoListItem } from '@/services/importacaoService';
-import { getEmbeddingFromCanvas, loadFaceModels, getFaceApi } from '@/lib/faceApi';
 import { CameraModal } from '@/components/CameraModal';
 import { RECORD_TYPE_LABELS } from '@/types/timeClock';
 
@@ -65,10 +64,6 @@ export function AdminPage() {
       return;
     }
   }, [isAuthenticated, navigate]);
-
-  useEffect(() => {
-    loadFaceModels().catch((error) => console.error('Erro ao carregar modelos', error));
-  }, []);
 
   const empresasQuery = useQuery({
     queryKey: ['empresas'],
@@ -160,10 +155,10 @@ export function AdminPage() {
   });
 
   const enrollMutation = useMutation({
-    mutationFn: ({ employeeId, embedding }: { employeeId: string; embedding: number[] }) =>
-      employeeService.enroll(employeeId, { embeddings: [embedding] }),
+    mutationFn: ({ employeeId, imagesBase64 }: { employeeId: string; imagesBase64: string[] }) =>
+      employeeService.enroll(employeeId, { imagesBase64, replace: true }),
     onSuccess: () => {
-      toast({ title: 'Biometria registrada', variant: 'default' });
+      toast({ title: 'Biometria registrada', description: '3 capturas salvas com DeepFace.', variant: 'default' });
       void employeesQuery.refetch();
     },
     onError: (error: Error) => {
@@ -192,45 +187,27 @@ export function AdminPage() {
     setIsCameraOpen(true);
   };
 
-  const faceApi = getFaceApi();
-
-  async function blobToCanvas(photo: Blob): Promise<HTMLCanvasElement> {
-    const dataUrl = await new Promise<string>((resolve, reject) => {
+  async function blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(new Error('Erro ao ler arquivo'));
-      reader.readAsDataURL(photo);
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error('Erro ao ler imagem'));
+      reader.readAsDataURL(blob);
     });
-
-    const image = await faceApi.fetchImage(dataUrl);
-    const canvas = faceApi.createCanvasFromMedia(image) as HTMLCanvasElement;
-    canvas.getContext('2d')?.drawImage(image, 0, 0);
-    return canvas;
   }
 
-  const handlePhotoConfirm = async (photo: Blob) => {
+  const handlePhotoConfirm = async (photo: Blob | Blob[]) => {
     if (!cameraEmployeeId) return;
+    const blobs = Array.isArray(photo) ? photo : [photo];
 
     try {
-      const canvas = await blobToCanvas(photo);
-      const embedding = await getEmbeddingFromCanvas(canvas);
-
-      if (!embedding || embedding.length === 0) {
-        toast({
-          title: 'Não foi possível detectar o rosto',
-          description: 'Ajuste a iluminação/enquadramento e tente novamente.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      await enrollMutation.mutateAsync({ employeeId: cameraEmployeeId, embedding });
+      const imagesBase64 = await Promise.all(blobs.map((b) => blobToBase64(b)));
+      await enrollMutation.mutateAsync({ employeeId: cameraEmployeeId, imagesBase64 });
       setIsCameraOpen(false);
     } catch (error) {
       console.error('Erro ao processar foto:', error);
       const errorMessage =
         error instanceof Error ? error.message : 'Envie outro arquivo ou tente novamente.';
-
       toast({
         title: 'Erro ao processar a foto',
         description: errorMessage,
@@ -738,6 +715,12 @@ export function AdminPage() {
         onClose={() => setIsCameraOpen(false)}
         onConfirm={handlePhotoConfirm}
         recordTypeLabel="Cadastro biométrico"
+        requiredCaptures={3}
+        captureHints={[
+          'Foto 1/3 — rosto de frente no oval',
+          'Foto 2/3 — leve giro à esquerda',
+          'Foto 3/3 — leve giro à direita',
+        ]}
       />
     </div>
   );

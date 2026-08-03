@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { loadFaceModels } from '@/lib/faceApi';
 import { CameraSession, startCamera } from './cameraController';
-import { runRecognitionStep } from './faceRecognition';
+import { resetAlignStability, runRecognitionStep } from './faceRecognition';
 import { resolveTransition } from './stateManager';
 import { isLikelyIOS, sleep } from './device';
 import { ConfirmationData, FaceAlignStatus, TotemBootStatus, TotemState, TotemUiStatus } from './types';
 
-/** Constraints estáveis: evita “zoom” por troca de resolução alta/baixa. */
+/** Constraints estáveis para mobile. */
 const recognitionConstraints: MediaStreamConstraints = {
   audio: false,
   video: {
@@ -19,6 +18,26 @@ const recognitionConstraints: MediaStreamConstraints = {
 
 function randomResetMs() {
   return 5000 + Math.round(Math.random() * 3000);
+}
+
+function alignLabel(status: FaceAlignStatus): { label: string; message: string; progress: number } {
+  switch (status) {
+    case 'TOO_FAR':
+      return { label: 'Aproxime-se', message: 'Aproxime o rosto do oval', progress: 25 };
+    case 'TOO_CLOSE':
+      return { label: 'Afaste-se', message: 'Afaste um pouco o rosto', progress: 25 };
+    case 'OFF_CENTER':
+      return { label: 'Centralize', message: 'Centralize o rosto no oval', progress: 30 };
+    case 'HOLD_STILL':
+      return { label: 'Segure firme', message: 'Mantenha o rosto no oval...', progress: 55 };
+    case 'ALIGNED':
+      return { label: 'Identificando...', message: 'Processando biometria', progress: 75 };
+    case 'MISALIGNED':
+      return { label: 'Ajuste de posição', message: 'Alinhe o rosto ao oval', progress: 30 };
+    case 'NO_FACE':
+    default:
+      return { label: 'Aguardando rosto', message: 'Encaixe o rosto no oval', progress: 15 };
+  }
 }
 
 export function useTotemController() {
@@ -60,6 +79,7 @@ export function useTotemController() {
     mainCameraRef.current?.stop();
     mainCameraRef.current = null;
     startingCameraRef.current = false;
+    resetAlignStability();
   }, [stopRecognitionLoop]);
 
   const wake = useCallback(() => {
@@ -75,24 +95,19 @@ export function useTotemController() {
     setStatusLabel('Iniciando');
     setStatusMessage('Liberando câmera...');
     setProgress(20);
+    resetAlignStability();
 
     try {
-      // Safari iOS: pequeno atraso ajuda após troca de tela.
       if (isLikelyIOS()) {
         await sleep(280);
       }
-
-      // Modelos já devem estar no bootstrap; reforça sem custo se já carregados.
-      await loadFaceModels();
-
       if (!mainVideoRef.current) {
         throw new Error('Elemento de vídeo indisponível');
       }
-
       mainCameraRef.current = await startCamera(mainVideoRef.current, recognitionConstraints);
-      setProgress(45);
+      setProgress(40);
       setStatusLabel('Aguardando rosto');
-      setStatusMessage('Centralize seu rosto no guia');
+      setStatusMessage('Encaixe o rosto no oval');
       touchActivity();
     } catch (_error) {
       setStatusLabel('Erro de câmera');
@@ -105,27 +120,17 @@ export function useTotemController() {
     }
   }, [touchActivity, transition]);
 
-  // Bootstrap: carrega modelos assim que o totem abre (1ª visita).
+  // Bootstrap leve: Python não precisa baixar modelos no celular
   useEffect(() => {
     let cancelled = false;
-
-    void (async () => {
-      try {
-        setBootStatus('loading');
-        setBootMessage('Carregando reconhecimento facial...');
-        await loadFaceModels();
-        if (cancelled) return;
-        setBootStatus('ready');
-        setBootMessage('Totem pronto');
-      } catch (_error) {
-        if (cancelled) return;
-        setBootStatus('error');
-        setBootMessage('Falha ao carregar o totem. Recarregue a página.');
-      }
-    })();
-
+    const t = window.setTimeout(() => {
+      if (cancelled) return;
+      setBootStatus('ready');
+      setBootMessage('Totem pronto');
+    }, 250);
     return () => {
       cancelled = true;
+      window.clearTimeout(t);
     };
   }, []);
 
@@ -141,14 +146,12 @@ export function useTotemController() {
 
   useEffect(() => {
     if (state === 'IDLE') return;
-
     const interval = window.setInterval(() => {
       const inactiveForMs = Date.now() - lastActivityRef.current;
-      if ((state === 'WAKE' || state === 'RECOGNITION') && inactiveForMs > 12_000) {
+      if ((state === 'WAKE' || state === 'RECOGNITION') && inactiveForMs > 20_000) {
         transition('RESET');
       }
     }, 1000);
-
     return () => window.clearInterval(interval);
   }, [state, transition]);
 
@@ -172,13 +175,11 @@ export function useTotemController() {
 
       let cancelled = false;
       void (async () => {
-        // Liga a câmera ainda no WAKE (vídeo já montado, só oculto) para estabilizar antes de mostrar.
         if (!mainCameraRef.current) {
           await startRecognitionMode();
         }
         if (cancelled) return;
-        const settle = isLikelyIOS() ? 350 : 180;
-        await sleep(settle);
+        await sleep(isLikelyIOS() ? 350 : 180);
         if (!cancelled) transition('RECOGNITION');
       })();
 
@@ -201,37 +202,25 @@ export function useTotemController() {
         isRecognizingRef.current = true;
         try {
           const step = await runRecognitionStep(mainVideoRef.current);
+          setAlignStatus(step.alignStatus);
 
-          if (!step.hasFace) {
-            setAlignStatus('NO_FACE');
-            setStatusLabel('Aguardando rosto');
-            setStatusMessage('Aproxime-se da câmera');
-            setProgress(15);
+          if (step.errorMessage) {
+            setStatusLabel('Falha');
+            setStatusMessage(step.errorMessage);
+            setProgress(0);
+            cooldownRef.current = Date.now() + 2000;
+            return;
+          }
+
+          if (!step.aligned) {
+            const meta = alignLabel(step.alignStatus);
+            setStatusLabel(meta.label);
+            setStatusMessage(step.message ?? meta.message);
+            setProgress(meta.progress);
             return;
           }
 
           touchActivity();
-
-          if (!step.aligned) {
-            setAlignStatus('MISALIGNED');
-            setStatusLabel('Ajuste de posição');
-            setStatusMessage('Alinhe o rosto ao quadro');
-            setProgress(35);
-            return;
-          }
-
-          setAlignStatus('ALIGNED');
-          setStatusLabel('Identificando...');
-          setStatusMessage('Processando biometria');
-          setProgress(70);
-
-          if (step.errorMessage) {
-            setStatusLabel('Falha de reconhecimento');
-            setStatusMessage(step.errorMessage);
-            setProgress(0);
-            cooldownRef.current = Date.now() + 2500;
-            return;
-          }
 
           if (step.response?.matched) {
             setProgress(100);
@@ -245,13 +234,13 @@ export function useTotemController() {
           }
 
           setStatusLabel('Não reconhecido');
-          setStatusMessage(step.response?.message ?? 'Rosto não reconhecido');
+          setStatusMessage(step.response?.message ?? step.message ?? 'Rosto não reconhecido');
           setProgress(0);
           cooldownRef.current = Date.now() + 2500;
         } finally {
           isRecognizingRef.current = false;
         }
-      }, 1100);
+      }, 900);
 
       return () => stopRecognitionLoop();
     }

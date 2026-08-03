@@ -3,6 +3,9 @@ import { z } from 'zod';
 
 import { prisma } from '../../lib/prisma';
 import { requireEmpresaScope, requireRole } from '../../lib/tenant';
+import { env } from '../../config/env';
+import { recogPyClient } from '../../services/recogPyClient';
+import { normalizeEmbedding } from '../../lib/similarity';
 
 const createEmployeeSchema = z.object({
   identifier: z.string().trim().min(1, 'Informe a matrícula / ID interno'),
@@ -16,12 +19,18 @@ const createEmployeeSchema = z.object({
     .transform((v) => (v === '' ? undefined : v)),
 });
 
-const enrollSchema = z.object({
-  embeddings: z.array(z.array(z.number())).min(1),
-  algorithm: z.string().default('face-api.js'),
-  version: z.string().optional(),
-  sourcePhotoUrl: z.string().url().optional(),
-});
+const enrollSchema = z
+  .object({
+    embeddings: z.array(z.array(z.number())).min(1).optional(),
+    imagesBase64: z.array(z.string().min(32)).min(1).max(5).optional(),
+    algorithm: z.string().optional(),
+    version: z.string().optional(),
+    sourcePhotoUrl: z.string().url().optional(),
+    replace: z.boolean().optional(),
+  })
+  .refine((v) => Boolean(v.embeddings?.length || v.imagesBase64?.length), {
+    message: 'Informe imagesBase64 ou embeddings',
+  });
 
 const EMPRESA_SCOPED_ROLES = ['ADMIN', 'GESTOR'] as const;
 
@@ -86,7 +95,11 @@ export async function employeeRoutes(app: FastifyInstance) {
     if (reply.sent) return;
 
     const { employeeId } = request.params as { employeeId: string };
-    const payload = enrollSchema.parse(request.body);
+    const parsed = enrollSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ message: parsed.error.issues[0]?.message ?? 'Dados inválidos' });
+    }
+    const payload = parsed.data;
 
     const employee = await prisma.employee.findFirst({
       where: { id: employeeId, empresaId },
@@ -95,17 +108,61 @@ export async function employeeRoutes(app: FastifyInstance) {
       return reply.code(404).send({ message: 'Colaborador não encontrado' });
     }
 
+    let embeddings = payload.embeddings ?? [];
+    let algorithm = payload.algorithm ?? (env.RECOG_ENGINE === 'python' ? env.RECOG_ALGORITHM : 'face-api.js');
+
+    if (payload.imagesBase64?.length) {
+      if (env.RECOG_ENGINE !== 'python') {
+        return reply.code(400).send({
+          message: 'Envio de imagem exige RECOG_ENGINE=python',
+        });
+      }
+      const generated: number[][] = [];
+      for (const imageBase64 of payload.imagesBase64) {
+        try {
+          const result = await recogPyClient.embed(imageBase64, { requireAligned: false });
+          generated.push(normalizeEmbedding(result.embedding));
+          algorithm = result.algorithm || env.RECOG_ALGORITHM;
+        } catch (error) {
+          const err = error as Error & { payload?: { message?: string; alignStatus?: string } };
+          const alignMsg =
+            err.payload && typeof err.payload === 'object' ? err.payload.message : undefined;
+          return reply.code(400).send({
+            message: alignMsg ?? err.message ?? 'Falha ao processar uma das fotos',
+            alignStatus: err.payload?.alignStatus,
+          });
+        }
+      }
+      embeddings = generated;
+    }
+
+    if (payload.replace) {
+      await prisma.faceEmbedding.deleteMany({ where: { employeeId: employee.id } });
+    } else if (env.RECOG_ENGINE === 'python') {
+      // Remove biometrias legadas face-api ao cadastrar Python (dimensões incompatíveis)
+      await prisma.faceEmbedding.deleteMany({
+        where: {
+          employeeId: employee.id,
+          NOT: { algorithm: env.RECOG_ALGORITHM },
+        },
+      });
+    }
+
     await prisma.faceEmbedding.createMany({
-      data: payload.embeddings.map((embedding) => ({
+      data: embeddings.map((embedding) => ({
         employeeId: employee.id,
         embedding,
-        algorithm: payload.algorithm,
+        algorithm,
         version: payload.version,
         sourcePhotoUrl: payload.sourcePhotoUrl,
       })),
     });
 
-    return reply.code(201).send({ message: 'Biometria cadastrada com sucesso' });
+    return reply.code(201).send({
+      message: 'Biometria cadastrada com sucesso',
+      count: embeddings.length,
+      algorithm,
+    });
   });
 
   app.delete('/api/employees/:employeeId', async (request, reply) => {

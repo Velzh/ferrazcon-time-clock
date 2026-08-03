@@ -182,3 +182,42 @@ Passo a passo completo: **subir o código no Git** e **rodar na VPS com Portaine
 Para **próximas atualizações**: repita a Parte 1 (push no Git), depois Parte 2 (pull na VPS + build com a mesma tag `v2` ou uma nova, ex. `v2.1`), e na Parte 3 faça **Update the stack** (e troque a tag no YAML se tiver usado uma nova).
 
 Se algo falhar, confira os **logs** dos containers **api** e **frontend** no Portainer.
+
+---
+
+## Reconhecimento Python (DeepFace) — v3
+
+O totem **não** usa mais face-api.js para identificar. Fluxo:
+
+1. Celular captura JPEG e envia para a API Node
+2. Node chama o serviço **`recog-py`** (DeepFace Facenet512) na mesma rede Docker
+3. Node compara embeddings e registra a batida
+
+### Build na VPS
+
+```bash
+cd /root/ferrazcon-time-clock
+git pull origin main
+
+docker build --no-cache -t ferrazcon-api:v2 ./server
+docker build --no-cache -t ferrazcon-frontend:v2 -f Dockerfile.frontend \
+  --build-arg VITE_API_URL=/api \
+  --build-arg VITE_DEVICE_TOKEN=ferrazcon-device-2024 \
+  .
+docker build --no-cache -t ferrazcon-recog-py:v1 ./recog-py
+```
+
+Use o compose de exemplo [`stack-ponto.yml`](stack-ponto.yml) (já inclui `recog-py`, `RECOG_ENGINE=python`, `FACIAL_THRESHOLD=0.55`).
+
+```bash
+docker stack deploy -c stack-ponto.yml ponto
+# ou atualize o stack existente no Portainer com o YAML
+```
+
+**Importante após o deploy:** no admin, **recadastrar a biometria** de todos (3 fotos no oval). Embeddings antigos do face-api.js **não servem** para o Facenet512.
+
+Primeira subida do `recog-py` demora (baixa pesos do modelo no volume `recog_models`). Logs:
+
+```bash
+docker service logs -f ponto_recog-py
+```

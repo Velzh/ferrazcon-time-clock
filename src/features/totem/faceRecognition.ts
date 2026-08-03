@@ -1,86 +1,130 @@
-import { getFaceApi, loadFaceModels } from '@/lib/faceApi';
 import { recognitionService } from '@/services/recognitionService';
 import { RecognitionResponse } from '@/types/timeClock';
+import { FaceAlignStatus } from './types';
 
 const DEVICE_ID = 'totem-local';
+const STABLE_FRAMES_REQUIRED = 3;
 
 export interface RecognitionStep {
   hasFace: boolean;
   aligned: boolean;
+  alignStatus: FaceAlignStatus;
+  message?: string;
   response?: RecognitionResponse;
   errorMessage?: string;
 }
 
-function isFaceAligned(box: { x: number; y: number; width: number; height: number }, video: HTMLVideoElement) {
-  const w = video.videoWidth;
-  const h = video.videoHeight;
-  if (!w || !h) return false;
-
-  const cx = box.x + box.width / 2;
-  const cy = box.y + box.height / 2;
-
-  const centerX = Math.abs(cx / w - 0.5);
-  const centerY = Math.abs(cy / h - 0.5);
-  const faceRatio = box.width / w;
-
-  // Celular em pé / telas estreitas: relaxa um pouco para não bloquear o envio ao backend.
-  const narrow = w < 720 || h > w;
-  const tolX = narrow ? 0.26 : 0.18;
-  const tolY = narrow ? 0.28 : 0.2;
-  const minRatio = narrow ? 0.14 : 0.2;
-  const maxRatio = narrow ? 0.78 : 0.65;
-
-  const isCentered = centerX < tolX && centerY < tolY;
-  const isSized = faceRatio > minRatio && faceRatio < maxRatio;
-  return isCentered && isSized;
+/** Captura frame JPEG do vídeo (espelhado como na UI). */
+export function captureVideoFrameBase64(video: HTMLVideoElement, quality = 0.82): string | null {
+  if (!video.videoWidth || !video.videoHeight) return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  // Espelha para bater com o preview do usuário
+  ctx.translate(canvas.width, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, 0, 0);
+  const dataUrl = canvas.toDataURL('image/jpeg', quality);
+  return dataUrl;
 }
 
-function normalize(descriptor: number[]): number[] {
-  const mag = Math.sqrt(descriptor.reduce((sum, val) => sum + val * val, 0));
-  if (!mag) return descriptor;
-  return descriptor.map((val) => val / mag);
+let stableAlignedCount = 0;
+
+export function resetAlignStability() {
+  stableAlignedCount = 0;
 }
 
+/**
+ * Fluxo Python: envia JPEG ao backend.
+ * - detectOnly implícito até estabilizar no oval
+ * - só registra ponto após N frames ALIGNED seguidos
+ */
 export async function runRecognitionStep(video: HTMLVideoElement): Promise<RecognitionStep> {
-  await loadFaceModels();
-  const faceapi = getFaceApi();
-
-  const result = await faceapi.detectSingleFace(video).withFaceLandmarks().withFaceDescriptor();
-
-  if (!result) {
-    return { hasFace: false, aligned: false };
-  }
-
-  const aligned = isFaceAligned(result.detection.box, video);
-  if (!aligned) {
-    return { hasFace: true, aligned: false };
+  const imageBase64 = captureVideoFrameBase64(video);
+  if (!imageBase64) {
+    return {
+      hasFace: false,
+      aligned: false,
+      alignStatus: 'NO_FACE',
+      message: 'Aguardando câmera...',
+    };
   }
 
   try {
+    // Primeiro só detecta alinhamento (barato no servidor)
+    if (stableAlignedCount < STABLE_FRAMES_REQUIRED) {
+      const detect = await recognitionService.recognize({
+        imageBase64,
+        deviceId: DEVICE_ID,
+        detectOnly: true,
+      });
+
+      const alignStatus = (detect.alignStatus as FaceAlignStatus) || 'NO_FACE';
+      if (alignStatus === 'ALIGNED') {
+        stableAlignedCount += 1;
+        if (stableAlignedCount < STABLE_FRAMES_REQUIRED) {
+          return {
+            hasFace: true,
+            aligned: false,
+            alignStatus: 'HOLD_STILL',
+            message: 'Segure firme...',
+          };
+        }
+      } else {
+        stableAlignedCount = 0;
+        return {
+          hasFace: Boolean(detect.hasFace),
+          aligned: false,
+          alignStatus,
+          message: detect.message,
+        };
+      }
+    }
+
+    // Frames estáveis: tenta reconhecimento completo
     const response = await recognitionService.recognize({
-      embedding: normalize(Array.from(result.descriptor)),
+      imageBase64,
       deviceId: DEVICE_ID,
     });
 
-    const debugTotem = import.meta.env.VITE_DEBUG_TOTEM === 'true';
-    if (debugTotem && response && !response.matched) {
-      console.warn('[totem] reconhecimento não casou', {
-        vw: video.videoWidth,
-        vh: video.videoHeight,
-        similarity: response.similarity,
+    const alignStatus = (response.alignStatus as FaceAlignStatus) || 'ALIGNED';
+
+    if (!response.matched) {
+      if (alignStatus !== 'ALIGNED') {
+        stableAlignedCount = 0;
+        return {
+          hasFace: Boolean(response.hasFace),
+          aligned: false,
+          alignStatus,
+          message: response.message,
+        };
+      }
+      // Alinhado mas não casou — reseta estabilidade para nova tentativa
+      stableAlignedCount = 0;
+      return {
+        hasFace: true,
+        aligned: true,
+        alignStatus: 'ALIGNED',
+        response,
         message: response.message,
-      });
+      };
     }
 
+    stableAlignedCount = 0;
     return {
       hasFace: true,
       aligned: true,
+      alignStatus: 'ALIGNED',
       response,
     };
   } catch (error) {
+    stableAlignedCount = 0;
     return {
-      hasFace: true,
-      aligned: true,
+      hasFace: false,
+      aligned: false,
+      alignStatus: 'NO_FACE',
       errorMessage: error instanceof Error ? error.message : 'Erro no reconhecimento',
     };
   }

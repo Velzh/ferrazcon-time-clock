@@ -30,6 +30,9 @@ export interface RecognitionResponse {
   nextTypeLabel?: string;
   similarity?: number;
   timeEntry?: TimeEntry;
+  hasFace?: boolean;
+  alignStatus?: string;
+  faceRatio?: number;
 }
 
 export const RECORD_TYPE_LABELS: Record<TimeRecordType, string> = {

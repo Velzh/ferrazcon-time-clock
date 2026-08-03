@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CheckCircle2, Loader2, XCircle } from 'lucide-react';
 import ferrazconLogo from '@/assets/ferrazcon-logo.png';
-import { TotemUiStatus } from './types';
+import { FaceAlignStatus, TotemUiStatus } from './types';
 
 function ClockBlock() {
   const [now, setNow] = useState(() => new Date());
@@ -28,6 +28,53 @@ function ProgressBar({ value }: { value: number }) {
   return (
     <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
       <div className="h-full bg-sky-400 transition-all duration-300" style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
+    </div>
+  );
+}
+
+function ovalStroke(status: FaceAlignStatus) {
+  switch (status) {
+    case 'ALIGNED':
+    case 'HOLD_STILL':
+      return 'stroke-emerald-400';
+    case 'TOO_FAR':
+    case 'TOO_CLOSE':
+    case 'OFF_CENTER':
+    case 'MISALIGNED':
+      return 'stroke-amber-400';
+    default:
+      return 'stroke-rose-400';
+  }
+}
+
+function OvalGuide({ status }: { status: FaceAlignStatus }) {
+  const stroke = ovalStroke(status);
+  return (
+    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+      {/* Máscara escura com furo oval */}
+      <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+        <defs>
+          <mask id="totem-oval-mask">
+            <rect width="100" height="100" fill="white" />
+            <ellipse cx="50" cy="48" rx="28" ry="36" fill="black" />
+          </mask>
+        </defs>
+        <rect width="100" height="100" fill="rgba(2,8,23,0.62)" mask="url(#totem-oval-mask)" />
+      </svg>
+
+      {/* Contorno do oval */}
+      <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+        <ellipse
+          cx="50"
+          cy="48"
+          rx="28"
+          ry="36"
+          fill="none"
+          className={`${stroke} transition-colors duration-300`}
+          strokeWidth="1.4"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
     </div>
   );
 }
@@ -93,45 +140,38 @@ export function TotemRecognitionView({
   status: TotemUiStatus;
   videoRef: React.RefObject<HTMLVideoElement>;
 }) {
-  const isAligned = status.alignStatus === 'ALIGNED';
+  const isOk = status.alignStatus === 'ALIGNED' || status.alignStatus === 'HOLD_STILL';
 
   return (
     <div className="min-h-[100svh] bg-slate-950 text-white px-2.5 py-2.5 md:p-6">
       <header className="h-12 md:h-20 flex items-center justify-between md:justify-start gap-3 pt-[max(env(safe-area-inset-top),0px)] px-1 md:px-0">
         <img src={ferrazconLogo} alt="Ferrazcon" className="h-8 md:h-12 object-contain" />
-        <div className="md:hidden text-[11px] font-semibold text-slate-300">
-          {status.statusLabel}
-        </div>
+        <div className="md:hidden text-[11px] font-semibold text-slate-300">{status.statusLabel}</div>
       </header>
 
       <main className="mx-auto max-w-6xl flex flex-col gap-3 md:gap-5 lg:grid lg:grid-cols-[1.55fr,1fr]">
         <section className="relative rounded-2xl md:rounded-3xl border border-white/10 bg-black/40 p-2 md:p-4 flex-1">
-          <div className="relative rounded-xl md:rounded-2xl overflow-hidden border border-white/10 bg-black h-[72svh] sm:h-auto sm:aspect-[4/3] lg:aspect-[4/3] flex items-center justify-center">
+          <div className="relative rounded-xl md:rounded-2xl overflow-hidden border border-white/10 bg-black h-[72svh] sm:h-auto sm:aspect-[3/4] lg:aspect-[3/4] flex items-center justify-center">
             <video
               ref={videoRef}
               autoPlay
               playsInline
               muted
-              className="max-h-full max-w-full h-full w-full object-contain [transform:scaleX(-1)] bg-black"
+              className="max-h-full max-w-full h-full w-full object-cover [transform:scaleX(-1)] bg-black"
             />
 
-            <div
-              className={`absolute inset-4 sm:inset-8 md:inset-10 border-2 rounded-[20px] md:rounded-[28px] transition-colors ${
-                isAligned ? 'border-emerald-400' : 'border-rose-400'
-              }`}
-            />
+            <OvalGuide status={status.alignStatus} />
 
             <div className="absolute right-2 top-2 md:right-4 md:top-4 rounded-full px-2.5 md:px-3 py-1 text-[11px] md:text-xs font-semibold bg-black/60 border border-white/20">
-              {isAligned ? 'Posição alinhada' : 'Ajuste sua posição'}
+              {isOk ? 'Posição ok' : 'Ajuste no oval'}
             </div>
 
-            {/* Bottom sheet mobile */}
             <div className="lg:hidden absolute left-2 right-2 bottom-2 rounded-2xl border border-white/10 bg-black/55 backdrop-blur p-3 space-y-2">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm font-semibold text-sky-200">{status.statusLabel}</p>
                 <span
                   className={`h-2.5 w-2.5 rounded-full ${
-                    isAligned ? 'bg-emerald-400' : status.alignStatus === 'NO_FACE' ? 'bg-slate-400' : 'bg-rose-400'
+                    isOk ? 'bg-emerald-400' : status.alignStatus === 'NO_FACE' ? 'bg-slate-400' : 'bg-amber-400'
                   }`}
                 />
               </div>
@@ -145,10 +185,10 @@ export function TotemRecognitionView({
           <h2 className="text-lg md:text-xl font-semibold">Status</h2>
           <p className="text-base md:text-lg text-sky-200">{status.statusLabel}</p>
           <p className="text-sm md:text-base text-slate-300 leading-relaxed">{status.statusMessage}</p>
-
           <div className="pt-2">
             <ProgressBar value={status.progress} />
           </div>
+          <p className="text-xs text-slate-500 pt-2">Encaixe o rosto no oval e aguarde a confirmação.</p>
         </aside>
       </main>
     </div>

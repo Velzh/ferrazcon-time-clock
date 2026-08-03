@@ -4,10 +4,12 @@ import { apiClient } from './apiClient';
 const DEVICE_TOKEN = import.meta.env.VITE_DEVICE_TOKEN ?? 'local-demo';
 
 interface RecognitionPayload {
-  embedding: number[];
+  embedding?: number[];
+  imageBase64?: string;
   deviceId?: string;
   photoUrl?: string;
   previewOnly?: boolean;
+  detectOnly?: boolean;
 }
 
 export const recognitionService = {

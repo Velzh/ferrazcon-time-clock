@@ -8,10 +8,12 @@ interface CreateEmployeePayload {
 }
 
 interface EnrollmentPayload {
-  embeddings: number[][];
+  embeddings?: number[][];
+  imagesBase64?: string[];
   algorithm?: string;
   version?: string;
   sourcePhotoUrl?: string;
+  replace?: boolean;
 }
 
 export const employeeService = {
