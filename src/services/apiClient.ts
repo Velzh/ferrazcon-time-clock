@@ -57,8 +57,19 @@ async function request<T>(input: string, init?: RequestInit): Promise<T> {
 
     return JSON.parse(text) as T;
   } catch (error) {
-    if (error instanceof TypeError && error.message.includes('fetch')) {
-      throw new Error('Não foi possível conectar ao servidor. Verifique se o backend está rodando em http://localhost:4000');
+    if (error instanceof TypeError) {
+      const msg = (error.message || '').toLowerCase();
+      // Safari iOS: "Load failed"; Chrome: "Failed to fetch"
+      if (
+        msg.includes('fetch') ||
+        msg.includes('load failed') ||
+        msg.includes('networkerror') ||
+        msg.includes('network request failed')
+      ) {
+        throw new Error(
+          'Falha de rede ao enviar a foto. Use uma imagem menor (até ~2 MB) ou tente de novo com boa conexão.',
+        );
+      }
     }
     throw error;
   }

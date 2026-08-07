@@ -133,7 +133,8 @@ export function CameraModal({
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file && file.type.startsWith("image/")) {
+    // iOS às vezes manda HEIC sem type; aceita qualquer arquivo de imagem selecionado
+    if (file && (file.type.startsWith("image/") || !file.type)) {
       const next = [...capturedPhotos, file];
       setCapturedPhotos(next);
       setPreviewUrl(URL.createObjectURL(file));

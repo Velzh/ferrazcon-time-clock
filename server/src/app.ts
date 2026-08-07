@@ -16,6 +16,8 @@ import { importacaoRoutes } from './modules/importacao/importacao.routes';
 export async function buildServer() {
   const app = Fastify({
     logger: true,
+    // Fotos de celular em base64 (cadastro biométrico) facilmente passam de 1 MB
+    bodyLimit: 15 * 1024 * 1024,
   });
 
   await app.register(cors, {

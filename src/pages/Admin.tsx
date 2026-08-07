@@ -187,13 +187,32 @@ export function AdminPage() {
     setIsCameraOpen(true);
   };
 
-  async function blobToBase64(blob: Blob): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(new Error('Erro ao ler imagem'));
-      reader.readAsDataURL(blob);
-    });
+  /** Redimensiona/comprime antes do enroll — evita "Load failed" no Safari com HEIC/JPEG grandes. */
+  async function blobToCompressedDataUrl(blob: Blob, maxSide = 960, quality = 0.85): Promise<string> {
+    try {
+      const bitmap = await createImageBitmap(blob);
+      const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+      const w = Math.max(2, Math.round(bitmap.width * scale));
+      const h = Math.max(2, Math.round(bitmap.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        bitmap.close();
+        throw new Error('Canvas indisponível');
+      }
+      ctx.drawImage(bitmap, 0, 0, w, h);
+      bitmap.close();
+      return canvas.toDataURL('image/jpeg', quality);
+    } catch {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error('Erro ao ler imagem'));
+        reader.readAsDataURL(blob);
+      });
+    }
   }
 
   const handlePhotoConfirm = async (photo: Blob | Blob[]) => {
@@ -201,7 +220,7 @@ export function AdminPage() {
     const blobs = Array.isArray(photo) ? photo : [photo];
 
     try {
-      const imagesBase64 = await Promise.all(blobs.map((b) => blobToBase64(b)));
+      const imagesBase64 = await Promise.all(blobs.map((b) => blobToCompressedDataUrl(b)));
       await enrollMutation.mutateAsync({ employeeId: cameraEmployeeId, imagesBase64 });
       setIsCameraOpen(false);
     } catch (error) {
